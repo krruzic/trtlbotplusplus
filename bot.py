@@ -7,7 +7,6 @@ from discord.ext.commands import Bot
 from discord.ext import commands
 import platform
 import requests
-from jsonrpc_requests import Server
 
 from sqlalchemy.engine import Engine
 from sqlalchemy import event
@@ -15,22 +14,27 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 
-from models import Wallet, TipJar, Base
-from utils import config, format_hash, gen_paymentid, rpc, daemon
+from models import Wallet, TipJar, Transaction, Base
+from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits
 
 ### SETUP ###
 engine = create_engine('sqlite:///trtl.db')
 Base.metadata.create_all(engine)
 
-async def wallet_watcher(self):
+async def wallet_watcher():
     await client.wait_until_ready()
-    counter = 0
-    height = int(rpc.getStatus()['blockCount'])
-    while not self.is_closed():
-        counter += 1
-        height = int(rpc.getStatus()['blockCount'])
-        print("{} --- {}".format(counter,height))
-        await asyncio.sleep(1) # task runs every 60 seconds
+    counter = 100
+    height = int(rpc.getStatus()['blockCount'])-counter
+    while not client.is_closed:
+        counter -= 10
+        timeout = 1
+        if counter <= 0:
+            timeout = 31
+            counter = 0
+        height = int(rpc.getStatus()['blockCount'])-counter
+        print("searching transactions at height: {}".format(height))
+        get_deposits(height, session)
+        await asyncio.sleep(timeout) # task runs every 60 seconds
 
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -266,11 +270,12 @@ async def wallet(ctx, user: discord.User=None):
 async def deposit(ctx, user: discord.User=None):
     """ Get your deposit Payment ID for the tipjar """
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
-    good_embed = discord.Embed(title="Your Tipjar Payment ID is")
+    good_embed = discord.Embed(title="Your Tipjar Info")
     exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    tipjar_addr = rpc.getAddresses()['addresses'][0]
     if exists:
         pid = gen_paymentid(exists.address)
-        good_embed.description = "```{}```".format(pid)
+        good_embed.description = "Deposit TRTL to start tipping! ```transfer 3 {} <amount> -p {}```".format(tipjar_addr, pid)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
         if not balance:
             t = TipJar(pid, ctx.message.author.id, 0)
@@ -296,7 +301,7 @@ async def balance(ctx, user: discord.User=None):
             session.add(t)
             session.commit()
         else:
-            good_embed.description = "{} TRTLs".format(balance.amount)
+            good_embed.description = "{0:,.2f} TRTLs".format(balance.amount / 100)
             await client.send_message(ctx.message.author, embed = good_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"

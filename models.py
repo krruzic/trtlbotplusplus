@@ -37,3 +37,16 @@ class TipJar(Base):
         self.paymentid = paymentid
         self.userid = int(userid)
         self.amount = int(amount)
+
+class Transaction(Base):
+
+    __tablename__ = 'transactions'
+
+    id          =   Column(Integer, primary_key=True)
+    tx          =   Column(String(128), unique=True, nullable=False)
+
+    def __repr__(self):
+        return "<txt hash {}>".format(self.tx)
+
+    def __init__(self, tx):
+        self.tx = tx
