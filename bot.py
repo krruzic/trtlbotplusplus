@@ -15,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 
-from models import Wallet, Base
+from models import Wallet, TipJar, Base
 from utils import config, format_hash, gen_paymentid
 
 ### SETUP ###
@@ -271,7 +271,7 @@ async def deposit(ctx, user: discord.User=None):
     if exists:
         pid = gen_paymentid(exists.address)
         good_embed.description = "```{}```".format(pid)
-        balance = session.query(TipJar).filter(TipJar.address == exists.address).first()
+        balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
         if not balance:
             t = TipJar(pid, ctx.message.author.id, 0)
             session.add(t)
@@ -290,13 +290,14 @@ async def balance(ctx, user: discord.User=None):
     exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
     if exists:
         pid = gen_paymentid(exists.address)
-        balance = session.query(TipJar).filter(TipJar.address == exists.address).first()
+        balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
         if not balance:
             t = TipJar(pid, ctx.message.author.id, 0)
             session.add(t)
             session.commit()
-        good_embed.description = "{} TRTLs".format(balance.amount)
-        await client.send_message(ctx.message.author, embed = good_embed)
+        else:
+            good_embed.description = "{} TRTLs".format(balance.amount)
+            await client.send_message(ctx.message.author, embed = good_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
         err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")

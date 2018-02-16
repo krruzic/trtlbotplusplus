@@ -17,7 +17,7 @@ def format_hash(hashrate):
 def gen_paymentid(address):
     rng = random.Random(address+config['token'])
     results = []
-    length = 31
+    length = 32
     chunk_size = 65535
     chunks = []
     while length >= chunk_size:
@@ -27,7 +27,4 @@ def gen_paymentid(address):
         chunks.append(rng.getrandbits(length * 8).to_bytes(length, sys.byteorder))
     result = b''.join(chunks)
 
-    for i in range(0,num):
-        results.append("".join(map(chr, binascii.hexlify(result+(i).to_bytes(1, byteorder='big')))))
-
-    return results
+    return "".join(map(chr, binascii.hexlify(result)))

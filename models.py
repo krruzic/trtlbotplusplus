@@ -21,7 +21,7 @@ class Wallet(Base):
         self.userid = int(userid)
         self.messageid = int(messageid)
 
-class TipJar(Base)
+class TipJar(Base):
 
     __tablename__ = 'tips'
 
