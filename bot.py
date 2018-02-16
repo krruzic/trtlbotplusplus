@@ -13,6 +13,8 @@ from sqlalchemy import event
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from systemd import journal
+
 
 from models import Wallet, TipJar, Transaction, Base
 from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits, get_fee, build_transfer
@@ -21,19 +23,27 @@ from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits,
 engine = create_engine('sqlite:///trtl.db')
 Base.metadata.create_all(engine)
 
+
+
+
 async def wallet_watcher():
     await client.wait_until_ready()
-    counter = 100
+    counter = 1000
     height = int(rpc.getStatus()['blockCount'])-counter
     while not client.is_closed:
         counter -= 10
-        timeout = 1
+        timeout = 0.1
         if counter <= 0:
-            timeout = 31
+            timeout = 5
             counter = 0
         height = int(rpc.getStatus()['blockCount'])-counter
-        print("searching transactions at height: {}".format(height))
-        get_deposits(height, session)
+        journal.write("searching transactions at height: {}".format(height))
+        for tx in get_deposits(height, session):
+            session.add(tx)
+        try:
+            session.commit()
+        except:
+            session.rollback()
         await asyncio.sleep(timeout) # task runs every 60 seconds
 
 Session = sessionmaker(bind=engine)
@@ -44,7 +54,7 @@ client.loop.create_task(wallet_watcher())
 
 @client.event
 async def on_ready():
-    print("Bot online!")
+    journal.write("Bot online!")
 
 
 ### MARKET COMMANDS ###
@@ -332,7 +342,6 @@ async def tip(ctx, amount, user: discord.User=None):
         await client.say("Usage: !tip <amount> @username")
         return
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
-    good_embed = discord.Embed(title="You successfully tipped {}".format(user.name))
     request_desc = "Register with `!registerwallet TRTLyourwallet` to get started!"
     request_embed = discord.Embed(title="{} wants to tip you".format(ctx.message.author.name),description=request_desc)
     try:
@@ -346,29 +355,26 @@ async def tip(ctx, amount, user: discord.User=None):
     if self_exists and amount < 50000000 and user_exists:
         pid = gen_paymentid(self_exists.address)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
-        print(balance)
+        journal.write(balance)
         if not balance:
             t = TipJar(pid, ctx.message.author.id, 0)
             session.add(t)
             session.commit()
             err_embed.description = "You are now registered, please `!deposit` to tip"
-            await client.say(user, embed = err_embed)
-            return
+            await client.send_message(user, embed = err_embed)
+
         else:
             fee = get_fee(amount)
             if amount+fee > balance.amount:
                 err_embed.description = "Your balance is too low!"
                 await client.send_message(ctx.message.author, "You have `{0:,.2f}` TRTLs".format(balance.amount / 100))
             else:
-                transfer = build_transfer(user_exists.address, amount)
-                print(transfer)
+                transfer = build_transfer(user_exists.address, amount, self_exists.address)
+                journal.write(transfer)
                 result = rpc.sendTransaction(transfer)
-                balance.amount -= amount+fee
-                session.commit()
-                print(result)
-                good_embed.description = "{0:,.2f} TRTLs were sent.".format(amount / 100)
-                await client.say(embed = good_embed)
-                return
+                journal.write(result)
+                await client.say("{0:,.2f} TRTLs were sent.".format(amount / 100))
+
     elif amount > 50000000:
         err_embed.description = "Transactions must be under 500k TRTLs!"
     elif not user_exists:

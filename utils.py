@@ -74,17 +74,15 @@ def get_deposits(starting_height, session):
         for transfer in data['transaction']['transfers']:
             if transfer['address'] in rpc.getAddresses()['addresses']:
                 amount += transfer['amount']
+            if transfer['amount'] < 0 and transfer['address'] != '': # money leaving tipjar, remove from user's balance
+                amount += transfer['amount']
         if not balance:
-            t = TipJar(pid, ctx.message.author.id, amount)
-            print(t)
-            session.add(t)
-            session.commit()
+            continue
         else:
-            balance.amount = balance.amount + amount
+            balance.amount += amount
         nt = Transaction(tx['transactionHash'])
-        session.add(nt)
-        session.commit()
         CONFIRMED_TXS.pop(i)
+        yield nt
 
 def get_fee(amount):
     if amount < 10000000:
@@ -94,9 +92,10 @@ def get_fee(amount):
     elif amount > 30000000:
         return 300
 
-def build_transfer(address, amount):
+def build_transfer(address, amount, self_address):
     params = {
         'fee': get_fee(amount),
+        'paymentId': gen_paymentid(self_address),
         'anonymity': 3,
         'transfers': [
             {
