@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 
 from models import Wallet, Base
-from utils import format_hash
+from utils import config, format_hash, gen_paymentid
 
 ### SETUP ###
 engine = create_engine('sqlite:///trtl.db')
@@ -25,7 +25,6 @@ Base.metadata.create_all(engine)
 
 Session = sessionmaker(bind=engine)
 session = Session()
-config = json.load(open('config.json'))
 
 class TrtlServer(Server):
     def dumps(self, data):
@@ -182,6 +181,8 @@ async def whine(ctx):
     await client.add_roles(ctx.message.author, whiner_role)
     await client.say("You are now a whiner!")
 
+
+### WALLET COMMANDS ###
 @client.command(pass_context = True)
 async def registerwallet(ctx, address):
     " Register your wallet in the DB """
@@ -211,8 +212,6 @@ async def registerwallet(ctx, address):
     elif not address.startswith("TRTL"):
         err_embed.description = "Wallets start with `TRTL`"
     await client.say(embed = err_embed)
-
-
 
 @client.command(pass_context = True)
 async def updatewallet(ctx, address):
@@ -262,4 +261,45 @@ async def wallet(ctx, user: discord.User=None):
             await client.say(embed = good_embed)
             return
     await client.say(ember = err_embed)
+
+@client.command(pass_context = True)
+async def deposit(ctx, user: discord.User=None):
+    """ Get your deposit Payment ID for the tipjar """
+    err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
+    good_embed = discord.Embed(title="Your Tipjar Payment ID is")
+    exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    if exists:
+        pid = gen_paymentid(exists.address)
+        good_embed.description = "```{}```".format(pid)
+        balance = session.query(TipJar).filter(TipJar.address == exists.address).first()
+        if not balance:
+            t = TipJar(pid, ctx.message.author.id, 0)
+            session.add(t)
+            session.commit()
+        await client.send_message(ctx.message.author, embed = good_embed)
+    else:
+        err_embed.description = "You haven't registered a wallet!"
+        err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
+        await client.say(embed = err_embed)
+
+@client.command(pass_context = True)
+async def balance(ctx, user: discord.User=None):
+    """ Get your tipjar balance """
+    err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
+    good_embed = discord.Embed(title="Your Tipjar Balance is")
+    exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    if exists:
+        pid = gen_paymentid(exists.address)
+        balance = session.query(TipJar).filter(TipJar.address == exists.address).first()
+        if not balance:
+            t = TipJar(pid, ctx.message.author.id, 0)
+            session.add(t)
+            session.commit()
+        good_embed.description = "{} TRTLs".format(balance.amount)
+        await client.send_message(ctx.message.author, embed = good_embed)
+    else:
+        err_embed.description = "You haven't registered a wallet!"
+        err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
+        await client.say(embed = err_embed)
+
 client.run(config['token'])
