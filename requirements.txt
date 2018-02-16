@@ -7,5 +7,6 @@ idna==2.6
 jsonrpc-requests==0.4.0
 multidict==4.1.0
 requests==2.18.4
+SQLAlchemy==1.2.2
 urllib3==1.22
 websockets==3.4

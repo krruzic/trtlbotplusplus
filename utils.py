@@ -45,7 +45,7 @@ def gen_paymentid(address):
     return "".join(map(chr, binascii.hexlify(result)))
 
 def get_deposits(starting_height, session):
-    transactionData = rpc.getTransactions(firstBlockIndex=starting_height-10, blockCount=15) # include bets from previous gap block
+    transactionData = rpc.getTransactions(firstBlockIndex=starting_height-10, blockCount=1000) # include bets from previous gap block
     for item in transactionData['items']:
         for tx in item['transactions']:
             if tx['paymentId'] == '':
@@ -73,8 +73,6 @@ def get_deposits(starting_height, session):
         balance = session.query(TipJar).filter(TipJar.paymentid == data['transaction']['paymentId']).first()
         for transfer in data['transaction']['transfers']:
             if transfer['address'] in rpc.getAddresses()['addresses']:
-                amount += transfer['amount']
-            if transfer['amount'] < 0 and transfer['address'] != '': # money leaving tipjar, remove from user's balance
                 amount += transfer['amount']
         if not balance:
             continue
