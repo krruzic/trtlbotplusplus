@@ -34,7 +34,6 @@ async def wallet_watcher():
             timeout = 5
             counter = 0
         height = int(rpc.getStatus()['blockCount'])-counter
-        print("searching transactions at height: {}".format(height))
         for tx in get_deposits(height, session):
             session.add(tx)
         try:
@@ -201,7 +200,7 @@ async def registerwallet(ctx, address):
     exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
     if exists:
         good_embed.title = "Your wallet exists!".format(exists.address)
-        good_embed.description = "```{}``` use `!updatewallet <addr>` to change".format(exists[0].address)
+        good_embed.description = "```{}``` use `!updatewallet <addr>` to change".format(exists.address)
         await client.say(embed = good_embed)
         return
     elif not exists and len(address) == 99 and address.startswith("TRTL"):
@@ -346,9 +345,16 @@ async def tip(ctx, amount, user: discord.User=None):
     except:
         if user:
             await client.say("Usage: !tip <amount> @username")
-
+    if amount <= 1:
+        err_embed.description = "`amount` must be greater than 1"
+        await client.say(ember = err_embed)
+        return
     user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
     self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    if user.id == ctx.message.author.id:
+        err_embed.description = "You cannot tip yourself!"
+        await client.say(ember = err_embed)
+        return
     if self_exists and amount < 50000000 and user_exists:
         pid = gen_paymentid(self_exists.address)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
@@ -372,8 +378,13 @@ async def tip(ctx, amount, user: discord.User=None):
                 result = rpc.sendTransaction(transfer)
                 print(result)
                 balance.amount -= amount+fee
-                session.commit()
+                try:
+                    session.commit()
+                except:
+                    session.rollback()
+                    raise
                 await client.say("Sent `{0:,.2f}` TRTLs".format(amount / 100))
+                await client.send_message(user, "{} sent you `{}` TRTLs with Transaction Hash ```{}```".format(ctx.message.author.name, amount / 100, result['transactionHash']))
                 return
     elif amount > int(rpc.getBalance()['availableBalance']):
         err_embed.description = "Too many coins are locked, please wait."
