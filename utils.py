@@ -75,7 +75,7 @@ def get_deposits(starting_height, session):
             if transfer['address'] in rpc.getAddresses()['addresses']:
                 amount += transfer['amount']
             if transfer['amount'] < 0 and transfer['address'] != '': # money leaving tipjar, remove from user's balance
-                amount += transfer['amount']
+                amount -= transfer['amount']
         if not balance:
             continue
         else:

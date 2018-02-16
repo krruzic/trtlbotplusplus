@@ -13,8 +13,6 @@ from sqlalchemy import event
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from systemd import journal
-
 
 from models import Wallet, TipJar, Transaction, Base
 from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits, get_fee, build_transfer
@@ -22,8 +20,6 @@ from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits,
 ### SETUP ###
 engine = create_engine('sqlite:///trtl.db')
 Base.metadata.create_all(engine)
-
-
 
 
 async def wallet_watcher():
@@ -37,7 +33,7 @@ async def wallet_watcher():
             timeout = 5
             counter = 0
         height = int(rpc.getStatus()['blockCount'])-counter
-        journal.write("searching transactions at height: {}".format(height))
+        print("searching transactions at height: {}".format(height))
         for tx in get_deposits(height, session):
             session.add(tx)
         try:
@@ -54,7 +50,7 @@ client.loop.create_task(wallet_watcher())
 
 @client.event
 async def on_ready():
-    journal.write("Bot online!")
+    print("Bot online!")
 
 
 ### MARKET COMMANDS ###
@@ -355,7 +351,7 @@ async def tip(ctx, amount, user: discord.User=None):
     if self_exists and amount < 50000000 and user_exists:
         pid = gen_paymentid(self_exists.address)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
-        journal.write(balance)
+        print(balance)
         if not balance:
             t = TipJar(pid, ctx.message.author.id, 0)
             session.add(t)
@@ -370,9 +366,9 @@ async def tip(ctx, amount, user: discord.User=None):
                 await client.send_message(ctx.message.author, "You have `{0:,.2f}` TRTLs".format(balance.amount / 100))
             else:
                 transfer = build_transfer(user_exists.address, amount, self_exists.address)
-                journal.write(transfer)
+                print(transfer)
                 result = rpc.sendTransaction(transfer)
-                journal.write(result)
+                print(result)
                 await client.say("{0:,.2f} TRTLs were sent.".format(amount / 100))
 
     elif amount > 50000000:
