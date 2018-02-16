@@ -85,3 +85,22 @@ def get_deposits(starting_height, session):
         session.add(nt)
         session.commit()
         CONFIRMED_TXS.pop(i)
+
+def get_fee(amount):
+    if amount < 10000000:
+        fee = 100
+    elif amount > 10000000 and amount < 30000000:
+        fee = 1000
+    elif amount > 30000000:
+        fee = 3000
+
+def build_transfer(address, amount):
+    params = {
+        'fee': get_fee(amount),
+        'anonymity': 3,
+        'transfers': [
+            'amount': amount,
+            'address': address
+        ]
+    }
+    return params

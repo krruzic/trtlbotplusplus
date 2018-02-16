@@ -134,32 +134,29 @@ async def exile(ctx, user: discord.User=None):
     """ Exiles specified user. Usable by MODs only """
     exile_role = discord.utils.get(ctx.message.server.roles,name='exiled')
     sender_roles = ctx.message.author.roles
-    x = False
     if not user:
         await client.say("Usage: !exile @username")
     for role in sender_roles:
         if role.name in ["MOD","ADMIN"]:
             await client.add_roles(user, exile_role)
             await client.say("Exiled {}!".format(user))
-            x = True
-    if not x:
-        await client.say("You do not have permission to do that.")
+            return
+    await client.say("You do not have permission to do that.")
 
 @client.command(pass_context = True)
 async def warn(ctx, user: discord.User=None):
     """ Marks specified user as WANTED. Usable by MODs only """
     exile_role = discord.utils.get(ctx.message.server.roles,name='WANTED')
     sender_roles = ctx.message.author.roles
-    x = False
     if not user:
         await client.say("Usage: !warn @username")
+        return
     for role in sender_roles:
         if role.name in ["MOD","ADMIN"]:
             await client.add_roles(user, exile_role)
             await client.say("{} is now WANTED. This is a warning.".format(user))
-            x = True
-    if not x:
-        await client.say("You do not have permission to do that.")
+            return
+    await client.say("You do not have permission to do that.")
 
 @client.command(pass_context = True)
 async def free(ctx, user: discord.User=None):
@@ -167,16 +164,15 @@ async def free(ctx, user: discord.User=None):
     exile_role = discord.utils.get(ctx.message.server.roles,name='exiled')
     wanted_role = discord.utils.get(ctx.message.server.roles,name='WANTED')
     sender_roles = ctx.message.author.roles
-    x = False
     if not user:
         await client.say("Usage: !free @username")
+        return
     for role in sender_roles:
         if role.name in ["MOD","ADMIN"]:
             await client.remove_roles(user, exile_role)
             await client.say("{} is free!".format(user))
-            x = True
-    if not x:
-        await client.say("You do not have permission to do that.")
+            return
+    await client.say("You do not have permission to do that.")
 
 @client.command(pass_context = True)
 async def whine(ctx):
@@ -208,6 +204,15 @@ async def registerwallet(ctx, address):
         good_embed.title = "Successfully registered your wallet"
         good_embed.description = "```{}```".format(address)
         await client.say(embed = good_embed)
+
+        pid = gen_paymentid(address)
+        balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
+        if not balance:
+            t = TipJar(pid, ctx.message.author.id, 0)
+            session.add(t)
+            session.commit()
+        else:
+            balance.paymentid = pid
         return
     elif len(address) > 99:
         err_embed.description = "Your wallet must be 99 characeters long, your entry was too long"
@@ -227,11 +232,23 @@ async def updatewallet(ctx, address):
     if not exists:
         err_embed.description = "You haven't registered a wallet!"
     elif exists and len(address) == 99 and address.startswith("TRTL"):
+        old_pid = gen_paymentid(exists.address)
+        old_balance = session.query(TipJar).filter(TipJar.paymentid == old_pid).first()
         exists.address = address
         session.commit()
         good_embed.title = "Successfully updated your wallet"
         good_embed.description = "```{}```".format(address)
         await client.say(embed = good_embed)
+
+        pid = gen_paymentid(exists.address)
+        balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
+        if not balance:
+            t = TipJar(pid, ctx.message.author.id, 0)
+            session.add(t)
+            session.commit()
+        else:
+            balance.paymentid = pid
+            balance.amount += old_balance.amount
         return
     elif len(address) > 99:
         err_embed.description = "Your wallet must be 99 characeters long, your entry was too long"
@@ -268,7 +285,7 @@ async def wallet(ctx, user: discord.User=None):
 
 @client.command(pass_context = True)
 async def deposit(ctx, user: discord.User=None):
-    """ Get your deposit Payment ID for the tipjar """
+    """ PMs your deposit information for the tipjar """
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     good_embed = discord.Embed(title="Your Tipjar Info")
     exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
@@ -289,7 +306,7 @@ async def deposit(ctx, user: discord.User=None):
 
 @client.command(pass_context = True)
 async def balance(ctx, user: discord.User=None):
-    """ Get your tipjar balance """
+    """ PMs your tipjar balance """
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     good_embed = discord.Embed(title="Your Tipjar Balance is")
     exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
@@ -301,11 +318,63 @@ async def balance(ctx, user: discord.User=None):
             session.add(t)
             session.commit()
         else:
-            good_embed.description = "{0:,.2f} TRTLs".format(balance.amount / 100)
+            good_embed.description = "`{0:,.2f}` TRTLs".format(balance.amount / 100)
             await client.send_message(ctx.message.author, embed = good_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
         err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
         await client.say(embed = err_embed)
+
+@client.command(pass_context = True)
+async def tip(ctx, amount, user: discord.User=None):
+    """ Tips a user <amount> TRTL """
+    err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
+    good_embed = discord.Embed(title="Your Tipjar Balance is")
+    request_desc = "Register with `!registerwallet TRTLyourwallet` to get started!"
+    request_embed = discord.Embed(title="{} wants to tip you".format(ctx.message.author.name),description=request_desc)
+    try:
+        amount = int(round(float(amount)*100))
+    except:
+        await client.say("Usage: !tip <amount> @username")
+        return
+    if not user:
+        await client.say("Usage: !tip <amount> @username")
+        return
+
+    user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
+    self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    if self_exists and amount < 50000000 and user_exists:
+        pid = gen_paymentid(exists.address)
+        balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
+        if not balance:
+            t = TipJar(pid, ctx.message.author.id, 0)
+            session.add(t)
+            session.commit()
+        else:
+            fee = get_fee(amount)
+            if amount+fee > balance.amount:
+                err_embed.description = "Your balance is too low!"
+                await client.say(ctx.message.author, "You have `{0:,.2f}` TRTLs".format(balance.amount / 100))
+            else:
+                transfer = build_transfer(user_exists.address, amount)
+                result = rpc.sendTransaction(transfer)
+                print(result)
+    elif amount > 50000000:
+        err_embed.description = "Transactions must be under 500k TRTLs!"
+    elif not user_exists:
+        err_embed.description = "{} hasn't registered to be tipped!".format(user.name)
+        await client.say(user, embed = request_embed)
+    else:
+        err_embed.description = "You haven't registered a wallet!"
+        err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
+    await client.say(embed = err_embed)
+
+    for role in sender_roles:
+        if role.name in ["MOD","ADMIN"]:
+            await client.remove_roles(user, exile_role)
+            await client.say("{} is free!".format(user))
+            return
+    await client.say(embed = err_embed)
+
 
 client.run(config['token'])
