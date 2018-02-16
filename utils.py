@@ -88,19 +88,21 @@ def get_deposits(starting_height, session):
 
 def get_fee(amount):
     if amount < 10000000:
-        fee = 100
+        return 10
     elif amount > 10000000 and amount < 30000000:
-        fee = 1000
+        return 100
     elif amount > 30000000:
-        fee = 3000
+        return 300
 
 def build_transfer(address, amount):
     params = {
         'fee': get_fee(amount),
         'anonymity': 3,
         'transfers': [
-            'amount': amount,
-            'address': address
+            {
+                'amount': amount,
+                'address': address
+            }
         ]
     }
     return params
