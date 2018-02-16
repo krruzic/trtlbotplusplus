@@ -1,0 +1,11 @@
+aiohttp==1.0.5
+async-timeout==2.0.0
+certifi==2018.1.18
+chardet==3.0.4
+discord.py==0.16.12
+idna==2.6
+jsonrpc-requests==0.4.0
+multidict==4.1.0
+requests==2.18.4
+urllib3==1.22
+websockets==3.4

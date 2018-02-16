@@ -1,0 +1,5 @@
+{
+  "token":"YOUR_BOT_TOKEN",
+  "prefix":"!",
+  "rpc_password":"PASSWORD"
+}
