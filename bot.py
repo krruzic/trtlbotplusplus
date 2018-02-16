@@ -16,27 +16,27 @@ from sqlalchemy.orm import sessionmaker
 
 
 from models import Wallet, TipJar, Base
-from utils import config, format_hash, gen_paymentid
+from utils import config, format_hash, gen_paymentid, rpc, daemon
 
 ### SETUP ###
 engine = create_engine('sqlite:///trtl.db')
 Base.metadata.create_all(engine)
 
+async def wallet_watcher(self):
+    await client.wait_until_ready()
+    counter = 0
+    height = int(rpc.getStatus()['blockCount'])
+    while not self.is_closed():
+        counter += 1
+        height = int(rpc.getStatus()['blockCount'])
+        print("{} --- {}".format(counter,height))
+        await asyncio.sleep(1) # task runs every 60 seconds
 
 Session = sessionmaker(bind=engine)
 session = Session()
 
-class TrtlServer(Server):
-    def dumps(self, data):
-        data['password'] = config['rpc_password']
-        return json.dumps(data)
-
-
-
 client = Bot(description="trtl bot for the trading channel", command_prefix=config['prefix'], pm_help = False)
-rpc = TrtlServer("http://127.0.0.1:8070/json_rpc")
-daemon = TrtlServer("http://127.0.0.1:11898/json_rpc")
-
+client.loop.create_task(wallet_watcher())
 
 @client.event
 async def on_ready():
