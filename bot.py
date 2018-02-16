@@ -368,8 +368,14 @@ async def tip(ctx, amount, user: discord.User=None):
 
         else:
             fee = get_fee(amount)
-            if amount+fee > balance.amount:
-                err_embed.description = "Your balance is too low!"
+            if balance.amount < 0:
+                balance.amount = 0
+                session.commit()
+                err_embed.description = "Your balance was negative!"
+                await client.send_message(ctx.message.author, "It has been reset to zero")
+                return
+            if amount + fee > balance.amount:
+                err_embed.description = "Your balance is too low! Amount + Fee = `{}` TRTLs".format((amount+fee) / 100)
                 await client.send_message(ctx.message.author, "You have `{0:,.2f}` TRTLs".format(balance.amount / 100))
                 return
             else:
@@ -377,6 +383,9 @@ async def tip(ctx, amount, user: discord.User=None):
                 print(transfer)
                 result = rpc.sendTransaction(transfer)
                 print(result)
+                if (balance.amount - amount+fee) < 0:
+                    print("ERROR! Balance corrupted")
+                    return
                 balance.amount -= amount+fee
                 try:
                     session.commit()
