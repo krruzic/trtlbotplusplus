@@ -1,3 +1,5 @@
+import random
+
 from sqlalchemy import Table, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -57,7 +59,7 @@ class Transaction(Base):
     tx          =   Column(String(128), unique=True, nullable=False)
 
     def __repr__(self):
-        return "<txt hash {}>".format(self.tx)
+        return "<tx hash {}>".format(self.tx)
 
     def __init__(self, tx):
         self.tx = tx

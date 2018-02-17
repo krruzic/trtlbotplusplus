@@ -46,45 +46,57 @@ def gen_paymentid(address):
 
 
 def get_deposits(starting_height, session):
-    transactionData = rpc.getTransactions(firstBlockIndex=starting_height-10, blockCount=1000) # include bets from previous gap block
+    transactionData = rpc.getTransactions(firstBlockIndex=starting_height-10, blockCount=1000)
     for item in transactionData['items']:
         for tx in item['transactions']:
             if tx['paymentId'] == '':
                 continue
             if tx['transactionHash'] in CONFIRMED_TXS:
                 continue
-            if tx['unlockTime'] == 0:
+            if tx['unlockTime'] <= 3:
                 CONFIRMED_TXS.append({'transactionHash': tx['transactionHash'],'ready':True, 'pid': tx['paymentId']})
-            if tx['unlockTime'] != 0:
+            if tx['unlockTime'] > 3:
                 CONFIRMED_TXS.append({'transactionHash': tx['transactionHash'],'ready':False, 'pid': tx['paymentId']})
-            print("appended all txs to list... {}".format(len(CONFIRMED_TXS)))
-    for i,tx in enumerate(CONFIRMED_TXS):
-        processed = session.query(Transaction).filter(Transaction.tx == tx['transactionHash']).first()
+        print("appended all txs to list... {}".format(len(CONFIRMED_TXS)))
+    for i,trs in enumerate(CONFIRMED_TXS):
+        print(trs)
+        processed = session.query(Transaction).filter(Transaction.tx == trs['transactionHash']).first()
         amount = 0
         if processed:
             CONFIRMED_TXS.pop(i)
             continue
-        data = rpc.getTransaction(transactionHash=tx['transactionHash'])
+        data = rpc.getTransaction(transactionHash=trs['transactionHash'])
+        print("data from RPC:")
         print(data)
-        if not tx['ready']:
+        if not trs['ready']:
             if data['unlockTime'] != 0:
                 continue
             else:
-                tx['ready'] = True
-        balance = session.query(TipJar).filter(TipJar.paymentid == data['transaction']['paymentId']).first()
+                trs['ready'] = True
+        likestring = data['transaction']['paymentId'][0:58]
+        print(likestring)
+        balance = session.query(TipJar).filter(TipJar.paymentid.contains(likestring)).first()
         if not balance:
+            print("user does not exist!")
             continue
         for transfer in data['transaction']['transfers']:
+            print("updating user balance!")
             address = transfer['address']
             amount = transfer['amount']
             change = 0
             if address in rpc.getAddresses()['addresses']:
+                print("deposit of {}".format(amount))
                 change += amount
-            elif address != '' and tx['paymentId'] == (balance.paymentid[0:59] + balance.withdraw): # money leaving tipjar, remove from user's balance
-                change -= amount
-        balance.amount += change
+            elif address != "" and trs['pid'] == (balance.paymentid[0:58] + balance.withdraw): # money leaving tipjar, remove from user's balance
+                print("withdrawal of {}".format(amount))
+                change -= (amount+data['transaction']['fee'])
+            try:
+                balance.amount += change
+            except:
+                balance.amount = change
+        print("new balance: {}".format(balance.amount))
         session.commit()
-        nt = Transaction(tx['transactionHash'])
+        nt = Transaction(trs['transactionHash'])
         CONFIRMED_TXS.pop(i)
         yield nt
 
@@ -96,11 +108,11 @@ def get_fee(amount):
     elif amount > 30000000:
         return 300
 
-def build_transfer(address, amount, self_address):
-    balance = session.query(TipJar).filter(TipJar.paymentid == gen_paymentid(self_address)).first()
+def build_transfer(address, amount, self_address, balance):
+    print("SEND PID: {}".format(balance.paymentid[0:58] + balance.withdraw))
     params = {
         'fee': get_fee(amount),
-        'paymentId': balance.paymentid[0:59] + balance.withdraw,
+        'paymentId': balance.paymentid[0:58] + balance.withdraw,
         'anonymity': 3,
         'transfers': [
             {
