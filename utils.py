@@ -44,8 +44,9 @@ def gen_paymentid(address):
 
     return "".join(map(chr, binascii.hexlify(result)))
 
+
 def get_deposits(starting_height, session):
-    transactionData = rpc.getTransactions(firstBlockIndex=starting_height-10, blockCount=15) # include bets from previous gap block
+    transactionData = rpc.getTransactions(firstBlockIndex=starting_height-10, blockCount=1000) # include bets from previous gap block
     for item in transactionData['items']:
         for tx in item['transactions']:
             if tx['paymentId'] == '':
@@ -53,9 +54,9 @@ def get_deposits(starting_height, session):
             if tx['transactionHash'] in CONFIRMED_TXS:
                 continue
             if tx['unlockTime'] == 0:
-                CONFIRMED_TXS.append({'transactionHash': tx['transactionHash'],'ready':True})
+                CONFIRMED_TXS.append({'transactionHash': tx['transactionHash'],'ready':True, 'pid': tx['paymentId']})
             if tx['unlockTime'] != 0:
-                CONFIRMED_TXS.append({'transactionHash': tx['transactionHash'],'ready':False})
+                CONFIRMED_TXS.append({'transactionHash': tx['transactionHash'],'ready':False, 'pid': tx['paymentId']})
             print("appended all txs to list... {}".format(len(CONFIRMED_TXS)))
     for i,tx in enumerate(CONFIRMED_TXS):
         processed = session.query(Transaction).filter(Transaction.tx == tx['transactionHash']).first()
@@ -71,15 +72,18 @@ def get_deposits(starting_height, session):
             else:
                 tx['ready'] = True
         balance = session.query(TipJar).filter(TipJar.paymentid == data['transaction']['paymentId']).first()
-        for transfer in data['transaction']['transfers']:
-            if transfer['address'] in rpc.getAddresses()['addresses']:
-                amount += transfer['amount']
-            if transfer['amount'] < 0 and transfer['address'] != '': # money leaving tipjar, remove from user's balance
-                amount -= transfer['amount']
         if not balance:
             continue
-        else:
-            balance.amount += amount
+        for transfer in data['transaction']['transfers']:
+            address = transfer['address']
+            amount = transfer['amount']
+            change = 0
+            if address in rpc.getAddresses()['addresses']:
+                change += amount
+            elif address != '' and tx['paymentId'] == (balance.paymentid[0:59] + balance.withdraw): # money leaving tipjar, remove from user's balance
+                change -= amount
+        balance.amount += change
+        session.commit()
         nt = Transaction(tx['transactionHash'])
         CONFIRMED_TXS.pop(i)
         yield nt
@@ -93,9 +97,10 @@ def get_fee(amount):
         return 300
 
 def build_transfer(address, amount, self_address):
+    balance = session.query(TipJar).filter(TipJar.paymentid == gen_paymentid(self_address)).first()
     params = {
         'fee': get_fee(amount),
-        'paymentId': gen_paymentid(self_address),
+        'paymentId': balance.paymentid[0:59] + balance.withdraw,
         'anonymity': 3,
         'transfers': [
             {

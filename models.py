@@ -1,7 +1,16 @@
 from sqlalchemy import Table, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 
+
 Base = declarative_base()
+
+def gen_hex():
+    all = "0123456789abcdef"
+    result = [random.choice('abcdef')] + [random.choice(all) for _ in range(4)]
+    random.shuffle(result)
+    result.insert(0, random.choice(all[1:]))
+    return ''.join(result)
+
 
 class Wallet(Base):
 
@@ -29,6 +38,7 @@ class TipJar(Base):
     paymentid   =   Column(String(64), unique=True, nullable=False)
     userid      =   Column(Integer, default=-1)
     amount      =   Column(Integer, default=0)
+    withdraw    =   Column(String(64), unique=True, nullable=False)
 
     def __repr__(self):
         return "<User {} has {} available to tip>".format(self.userid, self.amount)
@@ -37,6 +47,7 @@ class TipJar(Base):
         self.paymentid = paymentid
         self.userid = int(userid)
         self.amount = int(amount)
+        self.withdraw = gen_hex() # use this at the end of PID when withdrawing
 
 class Transaction(Base):
 

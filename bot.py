@@ -24,23 +24,22 @@ Base.metadata.create_all(engine)
 
 async def wallet_watcher():
     await client.wait_until_ready()
-    counter = 1000
+    counter = 100000
     height = int(rpc.getStatus()['blockCount'])-counter
     while not client.is_closed:
-        counter -= 10
+        counter -= 1000
         timeout = 0.1
         if counter <= 0:
             timeout = 5
             counter = 0
         height = int(rpc.getStatus()['blockCount'])-counter
-        print("searching transactions at height: {}".format(height))
         for tx in get_deposits(height, session):
             session.add(tx)
         try:
             session.commit()
         except:
             session.rollback()
-        await asyncio.sleep(timeout) # task runs every 60 seconds
+        await asyncio.sleep(timeout)
 
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -200,7 +199,7 @@ async def registerwallet(ctx, address):
     exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
     if exists:
         good_embed.title = "Your wallet exists!".format(exists.address)
-        good_embed.description = "```{}``` use `!updatewallet <addr>` to change".format(exists[0].address)
+        good_embed.description = "```{}``` use `!updatewallet <addr>` to change".format(exists.address)
         await client.say(embed = good_embed)
         return
     elif not exists and len(address) == 99 and address.startswith("TRTL"):
@@ -336,18 +335,25 @@ async def tip(ctx, amount, user: discord.User=None):
     """ Tips a user <amount> TRTL """
     if not user:
         await client.say("Usage: !tip <amount> @username")
-        return
+
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     request_desc = "Register with `!registerwallet TRTLyourwallet` to get started!"
     request_embed = discord.Embed(title="{} wants to tip you".format(ctx.message.author.name),description=request_desc)
     try:
         amount = int(round(float(amount)*100))
     except:
-        await client.say("Usage: !tip <amount> @username")
+        if user:
+            await client.say("Usage: !tip <amount> @username")
+    if amount <= 1:
+        err_embed.description = "`amount` must be greater than 1"
+        await client.say(ember = err_embed)
         return
-
     user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
     self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    if user.id == ctx.message.author.id:
+        err_embed.description = "You cannot tip yourself!"
+        await client.say(ember = err_embed)
+        return
     if self_exists and amount < 50000000 and user_exists:
         pid = gen_paymentid(self_exists.address)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
@@ -357,25 +363,44 @@ async def tip(ctx, amount, user: discord.User=None):
             session.add(t)
             session.commit()
             err_embed.description = "You are now registered, please `!deposit` to tip"
-            await client.send_message(user, embed = err_embed)
+            await client.send_message(ctx.message.author, embed = err_embed)
 
         else:
             fee = get_fee(amount)
-            if amount+fee > balance.amount:
-                err_embed.description = "Your balance is too low!"
+            if balance.amount < 0:
+                balance.amount = 0
+                session.commit()
+                err_embed.description = "Your balance was negative!"
+                await client.send_message(ctx.message.author, "It has been reset to zero")
+                return
+            if amount + fee > balance.amount:
+                err_embed.description = "Your balance is too low! Amount + Fee = `{}` TRTLs".format((amount+fee) / 100)
                 await client.send_message(ctx.message.author, "You have `{0:,.2f}` TRTLs".format(balance.amount / 100))
+                return
             else:
                 transfer = build_transfer(user_exists.address, amount, self_exists.address)
                 print(transfer)
                 result = rpc.sendTransaction(transfer)
                 print(result)
                 await client.say("{0:,.2f} TRTLs were sent.".format(amount / 100))
-
+                if (balance.amount - amount+fee) < 0:
+                    print("ERROR! Balance corrupted")
+                    return
+                try:
+                    session.commit()
+                except:
+                    session.rollback()
+                    raise
+                await client.say("Sent `{0:,.2f}` TRTLs".format(amount / 100))
+                await client.send_message(user, "{} sent you `{}` TRTLs with Transaction Hash ```{}```".format(ctx.message.author.name, amount / 100, result['transactionHash']))
+                return
+    elif amount > int(rpc.getBalance()['availableBalance']):
+        err_embed.description = "Too many coins are locked, please wait."
     elif amount > 50000000:
         err_embed.description = "Transactions must be under 500k TRTLs!"
     elif not user_exists:
         err_embed.description = "{} hasn't registered to be tipped!".format(user.name)
-        await client.say(user, embed = request_embed)
+        await client.send_message(user, embed = request_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
         err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
