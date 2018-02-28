@@ -72,7 +72,9 @@ def gen_paymentid(address):
 
 
 def get_deposits(starting_height, session):
+    print("scanning deposits")
     transactionData = rpc.getTransactions(firstBlockIndex=starting_height-10, blockCount=1000)
+    print(transactionData)
     for item in transactionData['items']:
         for tx in item['transactions']:
             if tx['paymentId'] == '':

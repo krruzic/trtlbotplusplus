@@ -27,7 +27,7 @@ session = Session()
 
 
 async def wallet_watcher():
-    start = int(rpc.getStatus()['blockCount'])
+    start = int(rpc.getStatus()['blockCount'])-10000
     while not client.is_closed:
         height = int(rpc.getStatus()['blockCount'])
         for tx in get_deposits(start, session):
