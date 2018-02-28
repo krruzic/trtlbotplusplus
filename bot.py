@@ -15,7 +15,9 @@ from sqlalchemy.orm import sessionmaker
 
 
 from models import Wallet, TipJar, Transaction, Base
-from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits, get_fee, build_transfer
+from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits, get_fee, build_transfer, get_supply
+
+HEADERS = {'Content-Type': 'application/json'}
 
 ### SETUP ###
 engine = create_engine('sqlite:///trtl.db')
@@ -25,8 +27,7 @@ session = Session()
 
 
 async def wallet_watcher():
-    await client.wait_until_ready()
-    start = 194320
+    start = int(rpc.getStatus()['blockCount'])
     while not client.is_closed:
         height = int(rpc.getStatus()['blockCount'])
         for tx in get_deposits(start, session):
@@ -62,45 +63,39 @@ async def faucet():
 
 @client.command()
 async def price(exchange=None):
-    """ Returns price on TradeOgre and TradeSatoshi """
+    """ Returns price on TradeOgre """
+    err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     tradeogre = requests.get("https://tradeogre.com/api/v1/ticker/btc-trtl")
     btc = requests.get("https://www.bitstamp.net/api/ticker/")
+    try:
+        to_json = tradeogre.json()
+    except ValueError:
+        err_embed.description = "The TradeOgre api is down"
+        await client.say(embed = err_embed)
+        return
     ogre_embed = discord.Embed(title = "Current Price of TRTL: Tradeogre", url = "https://tradeogre.com/exchange/BTC-TRTL")
     ogre_embed.add_field(name="Low", value="{0:,.0f} sats".format(round(float(tradeogre.json()['low'])*100000000)), inline=True)
     ogre_embed.add_field(name="Current", value="{0:,.0f} sats".format(round(float(tradeogre.json()['price'])*100000000)), inline=True)
     ogre_embed.add_field(name="High", value="{0:,.0f} sats".format(round(float(tradeogre.json()['high'])*100000000)), inline=True)
-    ogre_embed.add_field(name="TRTL-USD", value="${0:,.5f} USD".format(float(tradeogre.json()['price'])*float(btc.json()['last'])), inline=True)
+    ogre_embed.add_field(name="TRTL-USD", value="${0:,.5f} USD".format(float(tradeogre.json()['price'])*float(btc.json()['last'])), inline=True) 
     ogre_embed.add_field(name="Volume", value="{0:,.2f} BTC".format(float(tradeogre.json()['volume'])), inline=True)
     ogre_embed.add_field(name="BTC-USD", value="${0:,.2f} USD".format(float(btc.json()['last'])), inline=True)
-    tradesat = requests.get("https://tradesatoshi.com/api/public/getticker?market=TRTL_BTC")
-    sat_embed = discord.Embed(title = "Current Price of TRTL: Trade Satoshi", url = "https://tradesatoshi.com/Exchange?market=TRTL_BTC")
-    sat_embed.add_field(name="Bid", value="{0:,.0f} sats".format(round(float(tradesat.json()["result"]["bid"])*100000000)), inline=True)
-    sat_embed.add_field(name="Ask", value="{0:,.0f} sats".format(round(float(tradesat.json()["result"]["ask"])*100000000)), inline=True)
-    sat_embed.add_field(name="Last", value="{0:,.0f} sats".format(round(float(tradesat.json()["result"]["last"])*100000000)), inline=True) 
-    sat_embed.add_field(name="TRTL-USD", value="${0:,.5f} USD".format(float(tradesat.json()["result"]["last"])*float(btc.json()['last'])), inline=True)
-    sat_embed.add_field(name="BTC-USD", value="${0:,.2f} USD".format(float(btc.json()['last'])), inline=True)
-
-    if not exchange:
-        await client.say(embed = ogre_embed)
-        await client.say(embed = sat_embed)
-        return
-    if str(exchange)=="all":
-        await client.say(embed = ogre_embed)
-        await client.say(embed = sat_embed)
-        return
-    if exchange in ["tradesat","tradesatoshi", "ts"]:
-        await client.say(embed = sat_embed)
-
-    elif exchange in ["tradeogre", "to"]:
-        await client.say(embed = ogre_embed)
+    await client.say(embed = ogre_embed)
 
 @client.command()
 async def mcap():
     """ Returns current marketcap w/ TradeOgre data """
-    trtl = requests.get("https://tradeogre.com/api/v1/ticker/btc-trtl")
     btc = requests.get("https://www.bitstamp.net/api/ticker/")
-    supply = requests.get("https://blocks.turtle.link/q/supply/")
-    mcap = float(trtl.json()['price'])*float(btc.json()['last'])*float(supply.text)
+    supply = get_supply()
+    trtl = requests.get("https://tradeogre.com/api/v1/ticker/btc-trtl")
+    try:
+        trtl_json = trtl.json()
+        btc_json = btc.json()
+    except ValueError:
+        await client.say("Unable to get market cap!")
+        return
+    print("hello mcap")
+    mcap = float(trtl.json()['price'])*float(btc.json()['last'])*supply
     await client.say("Turtlecoin's Marketcap is **${0:,.2f}** USD".format(mcap))
 
 
@@ -127,8 +122,8 @@ async def height():
 @client.command()
 async def supply():
     """ Returns the current circulating supply of TRTLs """
-    resp = requests.get("https://blocks.turtle.link/q/supply/")
-    await client.say("The current circulating supply is **{:,}** TRTLs".format(int(float(resp.text))))
+    supply = get_supply()
+    await client.say("The current circulating supply is **{:0,.2f}** TRTLs".format(supply))
 
 
 ### SERVER COMMANDS ###
@@ -284,7 +279,7 @@ async def wallet(ctx, user: discord.User=None):
             good_embed.description = "```{}```".format(exists.address)
             await client.say(embed = good_embed)
             return
-    await client.say(ember = err_embed)
+    await client.say(embed = err_embed)
 
 @client.command(pass_context = True)
 async def deposit(ctx, user: discord.User=None):
@@ -348,7 +343,7 @@ async def tip(ctx, amount, user: discord.User=None):
             await client.say("Usage: !tip <amount> @username")
     if amount <= 1:
         err_embed.description = "`amount` must be greater than 1"
-        await client.say(ember = err_embed)
+        await client.say(embed = err_embed)
         return
     user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
     self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
