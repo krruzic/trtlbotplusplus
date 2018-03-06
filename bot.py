@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import random
 
 import discord
 from discord.ext.commands import Bot
@@ -183,6 +184,18 @@ async def whine(ctx):
     whiner_role = discord.utils.get(ctx.message.server.roles,name='whiner')
     await client.add_roles(ctx.message.author, whiner_role)
     await client.say("You are now a whiner!")
+
+@client.command()
+async def crystalball():
+    """ Randomly selects a meme and returns it """
+    memeArray = ["Nice just bought 100k.","Nice just sold 100k.","Wassa wassa wassa wassa WASSA BITCONNNEEEEEEEEEEEEEECT!!!",
+    "1 TRTL = 1 TRTL","Sorry just tucked in my wife's son you were saying?","It's a bubble.","pls buy bags kind sir",
+    "stop talk bitcoin i only spek dollars", "Hey! me and bunch of guys are going to dump that shit you in?", "HODL!",
+    "PoS is the future lmao!","Join before they reach ultimate price.","Take out a mortgage.","Future is bright.","Future is bleak.",
+    "You is my homie dawg but ...... sheeeeit.", "Try again."]
+    memeLen = len(memeArray)
+    memeIndex = random.randint(0,memeLen-1)
+    await client.say(memeArray[memeIndex]))
 
 
 ### WALLET COMMANDS ###
