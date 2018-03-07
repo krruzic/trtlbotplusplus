@@ -19,7 +19,7 @@ from models import Wallet, TipJar, Transaction, Base
 from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits, get_fee, build_transfer, get_supply
 
 HEADERS = {'Content-Type': 'application/json'}
-
+RAINBOT_ADDR = "TRTLv3nW7vX3WXx5CRprf1ifYcY26yYPiVK9E6ocN91DKpUmqADA17n9qcE9QBCgJriGZZcbHuwwKFC8RomYVPDZah8dBN32BbZ"
 ### SETUP ###
 engine = create_engine('sqlite:///trtl.db')
 Base.metadata.create_all(engine)
@@ -190,8 +190,7 @@ async def crystalball():
     "You is my homie dawg but ...... sheeeeit.", "Try again."]
     memeLen = len(memeArray)
     memeIndex = random.randint(0,memeLen-1)
-    await client.say(memeArray[memeIndex]))
-
+    await client.say(memeArray[memeIndex])
 
 ### WALLET COMMANDS ###
 @client.command(pass_context = True)
@@ -337,6 +336,72 @@ async def balance(ctx, user: discord.User=None):
         await client.say(embed = err_embed)
 
 @client.command(pass_context = True)
+async def condensate(ctx, amount):
+    """ Tips directly to the rainbot """
+
+    err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
+    try:
+        amount = int(round(float(amount)*100))
+    except:
+        await client.say("Usage: !condensate <amount>")
+        return
+    if amount <= 1:
+        err_embed.description = "`amount` must be greater than 1"
+        await client.say(embed = err_embed)
+        return
+    self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    if self_exists and amount < 50000000:
+        pid = gen_paymentid(self_exists.address)
+        balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
+        print(balance)
+        if not balance:
+            t = TipJar(pid, ctx.message.author.id, 0)
+            session.add(t)
+            session.commit()
+            err_embed.description = "You are now registered, please `!deposit` to donate"
+            await client.send_message(ctx.message.author, embed = err_embed)
+        else:
+            fee = get_fee(amount)
+            if balance.amount < 0:
+                balance.amount = 0
+                session.commit()
+                err_embed.description = "Your balance was negative!"
+                await client.send_message(ctx.message.author, "It has been reset to zero")
+                return
+            if amount + fee > balance.amount:
+                err_embed.description = "Your balance is too low! Amount + Fee = `{}` TRTLs".format((amount+fee) / 100)
+                await client.send_message(ctx.message.author, "You have `{0:,.2f}` TRTLs".format(balance.amount / 100))
+                return
+            else:
+                transfer = build_transfer(RAINBOT_ADDR, amount, self_exists.address, balance)
+                print(transfer)
+                result = rpc.sendTransaction(transfer)
+                print(result)
+                if (balance.amount - amount+fee) < 0:
+                    print("ERROR! Balance corrupted")
+                    balance.amount = 0
+                    return
+                try:
+                    session.commit()
+                except:
+                    session.rollback()
+                    raise
+                await client.say("Sent `{0:,.2f}` TRTLs to the rainbot!".format(amount / 100))
+                balance.amount -= (amount+fee)
+                tx = Transaction(result['transactionHash'])
+                session.add(tx)
+                session.commit()
+                return
+    elif amount > int(rpc.getBalance()['availableBalance']):
+        err_embed.description = "Too many coins are locked, please wait."
+    elif amount > 50000000:
+        err_embed.description = "Transactions must be under 500k TRTLs!"
+    else:
+        err_embed.description = "You haven't registered a wallet!"
+        err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to donate!")
+    await client.say(embed = err_embed)
+
+@client.command(pass_context = True)
 async def tip(ctx, amount, user: discord.User=None):
     """ Tips a user <amount> TRTL """
     if not user:
@@ -350,20 +415,14 @@ async def tip(ctx, amount, user: discord.User=None):
     try:
         amount = int(round(float(amount)*100))
     except:
-        if user:
-            await client.say("Usage: !tip <amount> @username")
-        else:
-            await client.say("Usage: !tip <amount> @username")
+        await client.say("Usage: !tip <amount> @username")
+        return
     if amount <= 1:
         err_embed.description = "`amount` must be greater than 1"
         await client.say(embed = err_embed)
         return
     user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
     self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
-    if user.id == ctx.message.author.id:
-        err_embed.description = "You cannot tip yourself!"
-        await client.say(embed = err_embed)
-        return
     if self_exists and amount < 50000000 and user_exists:
         pid = gen_paymentid(self_exists.address)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
@@ -405,7 +464,6 @@ async def tip(ctx, amount, user: discord.User=None):
                 good_embed.description = "{} sent you `{}` TRTLs with Transaction Hash ```{}```".format(ctx.message.author.mention, amount / 100, result['transactionHash'])
                 good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
                 await client.send_message(user, embed = good_embed)
-
                 balance.amount -= amount+fee
                 tx = Transaction(result['transactionHash'])
                 session.add(tx)
