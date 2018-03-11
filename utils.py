@@ -7,45 +7,21 @@ import json
 from jsonrpc_requests import Server, ProtocolError
 
 from models import Transaction, TipJar
-class TrtlServer(Server):
-    def dumps(self, data):
-        data['password'] = config['rpc_password']
-        return json.dumps(data)
-    @staticmethod
-    def parse_response(response):
-        """Parse the data returned by the server according to the JSON-RPC spec. Try to be liberal in what we accept."""
-        try:
-            server_data = response.json()
-        except ValueError as value_error:
-            raise ProtocolError('Cannot deserialize response body: %s' % value_error, server_response=response)
-
-        if not isinstance(server_data, dict):
-            raise ProtocolError('Response is not a dictionary', server_response=response, server_data=server_data)
-
-        if server_data.get('error'):
-            code = server_data['error'].get('code', '')
-            message = server_data['error'].get('message', '')
-            raise ProtocolError('Error: %s %s' % (code, message), server_response=response, server_data=server_data)
-        elif 'result' not in server_data:
-            print(response)
-            raise ProtocolError('Response without a result field', server_response=response, server_data=server_data)
-        else:
-            return server_data['result']
 
 
 config = json.load(open('config.json'))
 if 'rpc_port' in config:
     rpc_port = config['rpc_port']
 else:
-    rpc_port = "8070"
-rpc = TrtlServer("http://127.0.0.1:{}/json_rpc".format(rpc_port))
-daemon = TrtlServer("http://127.0.0.1:11898/json_rpc")
+    rpc_port = ""
+rpc = Server("http://127.0.0.1:{}/json_rpc".format(rpc_port))
+daemon = Server("http://127.0.0.1:24182/json_rpc")
 CONFIRMED_TXS = []
 
 def get_supply():
     lastblock = daemon.getlastblockheader()
     bo = daemon.f_block_json(hash=lastblock["block_header"]["hash"])
-    return float(bo["block"]["alreadyGeneratedCoins"])/100
+    return float(bo["block"]["alreadyGeneratedCoins"])/100000000
 
 def format_hash(hashrate):
     i = 0
@@ -129,12 +105,9 @@ def get_deposits(starting_height, session):
         yield nt
 
 def get_fee(amount):
-    if amount < 10000000:
-        return 10
-    elif amount > 10000000 and amount < 30000000:
-        return 100
-    elif amount > 30000000:
-        return 300
+    if amount < 100000000:
+        return 100000
+    return amount*0.001
 
 def build_transfer(address, amount, self_address, balance):
     print("SEND PID: {}".format(balance.paymentid[0:58] + balance.withdraw))

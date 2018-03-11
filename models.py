@@ -19,10 +19,10 @@ class Wallet(Base):
     __tablename__ = 'wallets'
 
     id          =   Column(Integer, primary_key=True)
-    address     =   Column(String(99), unique=True, nullable=False)
+    address     =   Column(String(97), unique=True, nullable=False)
     userid      =   Column(Integer, default=-1)
     messageid   =   Column(Integer, default=0)
-    deposit     =   Column(String(99), unique=True, nullable=True)
+    deposit     =   Column(String(97), unique=True, nullable=True)
 
     def __repr__(self):
         return "<User {} has Wallet {}>".format(self.userid,self.address)
