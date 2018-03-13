@@ -279,7 +279,7 @@ async def balance(ctx, user: discord.User=None):
             session.add(t)
             session.commit()
         else:
-            good_embed.description = "`{0:,.8f}` TRTL".format(balance.amount / 100)
+            good_embed.description = "`{0:,.2f}` TRTL".format(balance.amount / 100)
             await client.send_message(ctx.message.author, embed = good_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
@@ -306,7 +306,7 @@ async def tip(ctx, amount, user: discord.User=None):
             await client.say("Usage: !tip <amount> @username")
         else:
             await client.say("Usage: !tip <amount> @username")
-    if amount <= 100:
+    if amount <= 1:
         err_embed.description = "`amount` must be greater than 0.01"
         await client.say(embed = err_embed)
         return
@@ -333,7 +333,7 @@ async def tip(ctx, amount, user: discord.User=None):
                 balance.amount = 0
                 session.commit()
                 err_embed.description = "Your balance was negative!"
-                await client.send_message(ctx.message.author, "It has been reset to zero")
+                await client.send_message(ctx.message.author, embed=err_embed)
                 return
             if amount + fee > balance.amount:
                 err_embed.description = "Your balance is too low! Amount + Fee = `{}` TRTL".format((amount+fee) / 100)

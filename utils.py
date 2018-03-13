@@ -105,9 +105,10 @@ def get_deposits(starting_height, session):
         yield nt
 
 def get_fee(amount):
-    if amount < 100000000:
-        return 100000
-    return amount*0.001
+    if amount < 10000:
+        return 10
+    else:
+        return amount*0.01
 
 def build_transfer(address, amount, self_address, balance):
     print("SEND PID: {}".format(balance.paymentid[0:58] + balance.withdraw))
