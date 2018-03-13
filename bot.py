@@ -21,7 +21,7 @@ from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits,
 HEADERS = {'Content-Type': 'application/json'}
 
 ### SETUP ###
-engine = create_engine('sqlite:///{}.db')
+engine = create_engine('sqlite:///trtl.db')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -77,13 +77,13 @@ async def price(exchange=None):
     coindata_embed = discord.Embed(title = "Current Price of TRTL: {}".format(config['price_source']), 
         url = config['price_endpoint'])
     coindata_embed.add_field(name="Low", value="{0:,.0f} sats".format(round(float(coindata.json()['low'])*100000000)), inline=True)
-    coindata_embed.add_field(name="Current", value="{0:,.0f} sats".format(round(float(coindata.json()['last'])*100000000)), inline=True)
+    coindata_embed.add_field(name="Current", value="{0:,.0f} sats".format(round(float(coindata.json()['price'])*100000000)), inline=True)
     coindata_embed.add_field(name="High", value="{0:,.0f} sats".format(round(float(coindata.json()['high'])*100000000)), inline=True)
 
     coindata_embed.add_field(name="{}-USD".format(config['symbol']), 
-        value="${0:,.2f} USD".format(float(coindata.json()['last'])*float(btc.json()['last'])), inline=True)
+        value="${0:,.4f} USD".format(float(coindata.json()['price'])*float(btc.json()['last'])), inline=True)
 
-    coindata_embed.add_field(name="Volume", value="{0:,.2f} TRTL".format(float(coindata.json()['volume'])), inline=True)
+    coindata_embed.add_field(name="Volume", value="{:,.2f} BTC".format(float(coindata.json()['volume'])), inline=True)
     coindata_embed.add_field(name="BTC-USD", value="${0:,.2f} USD".format(float(btc.json()['last'])), inline=True)
     await client.say(embed = coindata_embed)
 
@@ -100,7 +100,7 @@ async def mcap():
         await client.say("Unable to get market cap!")
         return
     mcap = float(trtl.json()['last'])*float(btc.json()['last'])*supply
-    await client.say("{}'s Marketcap is **${0:,.2f}** USD".format(config['coin'], mcap))
+    await client.say("{0}'s Marketcap is **${1:,.2f}** USD".format(config['coin'], mcap))
 
 
 ### NETWORK COMMANDS ###
@@ -146,7 +146,7 @@ async def registerwallet(ctx, address):
     addr_exists = session.query(Wallet).filter(Wallet.address == address).first()
     if exists:
         good_embed.title = "Your wallet exists!".format(exists.address)
-        good_embed.description = "```{}``` use `!updatewallet <addr>` to change".format(exists.address)
+        good_embed.description = "```{}``` use `{}updatewallet <addr>` to change".format(exists.address, config['prefix'])
         await client.say(embed = good_embed)
         return
     if addr_exists:
@@ -225,7 +225,9 @@ async def updatewallet(ctx, address):
         good_embed.description = "Deposit TRTL to start tipping! ```transfer 3 {} <amount> -p {}```".format(tipjar_addr, pid)
         session.commit()
         await client.send_message(ctx.message.author, embed = good_embed)
-        await client.say(ctx.message.author, "Your balance: `{:0,.2f}` {}".format(balance / config['units'], config['symbol']))
+        good_embed.title = "Balance Update"
+        good_embed.description = "New Balance: `{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol'])
+        await client.send_message(ctx.message.author, embed = good_embed)
         return
     elif len(address) > 99:
         err_embed.description = "Your wallet must be 99 characeters long, your entry was too long"
@@ -276,7 +278,7 @@ async def deposit(ctx, user: discord.User=None):
         await client.send_message(ctx.message.author, embed = good_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
-        err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
+        err_embed.add_field(name="Help", value="Use `{}registerwallet <addr>` before trying to tip!".format(config['prefix']))
         await client.say(embed = err_embed)
 
 @client.command(pass_context = True)
@@ -293,11 +295,11 @@ async def balance(ctx, user: discord.User=None):
             session.add(t)
             session.commit()
         else:
-            good_embed.description = "`{0:,.2f}` {}".format(balance.amount / config['units'], config['symbol'])
+            good_embed.description = "`{0:,.2f}` {1}".format(balance.amount / config['units'], config['symbol'])
             await client.send_message(ctx.message.author, embed = good_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
-        err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
+        err_embed.add_field(name="Help", value="Use `{}registerwallet <addr>` before trying to tip!".format(config['prefix']))
         await client.say(embed = err_embed)
 
 
@@ -305,7 +307,7 @@ async def balance(ctx, user: discord.User=None):
 async def tip(ctx, amount, user: discord.User=None):
     """ Tips a user <amount> of coin """
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
-    request_desc = "Register with `!registerwallet <youraddress>` to get started!"
+    request_desc = "Register with `{}registerwallet <youraddress>` to get started!".format(config['prefix'])
     request_embed = discord.Embed(title="{} wants to tip you".format(ctx.message.author.mention),description=request_desc)
     good_embed = discord.Embed(title="You were tipped!",colour=discord.Colour(0xD4AF37))
 
@@ -371,10 +373,11 @@ async def tip(ctx, amount, user: discord.User=None):
                 except:
                     session.rollback()
                     raise
-                await client.say("Sent `{0:,.2f}` {}".format(amount / config['units'], config['symbol']))
-                good_embed.description = "{} sent you `{}` {} with Transaction Hash ```{}```".format(ctx.message.author.mention, amount / config['units'], 
-                    result['transactionHash'], config['symbol'])
-                
+                await client.add_reaction(ctx.message, "\U0001F4B8")
+                await client.send_message(ctx.message.author, "Sent `{0:,.2f}` {1}".format(amount / config['units'], config['symbol']))
+                good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(ctx.message.author.mention, amount / config['units'], config['symbol'],
+                    result['transactionHash'])
+
                 good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
                 await client.send_message(user, embed = good_embed)
 
@@ -382,7 +385,9 @@ async def tip(ctx, amount, user: discord.User=None):
                 tx = Transaction(result['transactionHash'])
                 session.add(tx)
                 session.commit()
-                await client.say(ctx.message.author, "Your balance: `{:0,.2f}` {}".format(balance / config['units'], config['symbol']))
+                good_embed.title = "Balance Update"
+                good_embed.description = "New Balance: `{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol'])
+                await client.send_message(ctx.message.author, embed = good_embed)
                 return
     elif amount > int(rpc.getBalance()['availableBalance']):
         err_embed.description = "Too many coins are locked, please wait."
@@ -391,7 +396,7 @@ async def tip(ctx, amount, user: discord.User=None):
         await client.send_message(user, embed = request_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
-        err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
+        err_embed.add_field(name="Help", value="Use `{}registerwallet <addr>` before trying to tip!".format(config['prefix']))
     await client.say(embed = err_embed)
 
 client.run(config['token'])

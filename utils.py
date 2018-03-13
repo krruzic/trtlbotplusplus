@@ -6,16 +6,18 @@ import json
 
 from jsonrpc_requests import Server, ProtocolError
 
+
 from models import Transaction, TipJar
 
-
 config = json.load(open('config.json'))
-if 'rpc_port' in config:
-    rpc_port = config['rpc_port']
-else:
-    rpc_port = ""
-rpc = Server("http://127.0.0.1:{}/json_rpc".format(rpc_port))
-daemon = Server("http://127.0.0.1:11898/json_rpc")
+
+class TrtlServer(Server):
+    def dumps(self, data):
+        data['password'] = config['rpc_password']
+        return json.dumps(data)
+
+rpc = TrtlServer("http://127.0.0.1:{}/json_rpc".format(config['rpc_port']))
+daemon = TrtlServer("http://127.0.0.1:{}/json_rpc".format(config['daemon_port']))
 CONFIRMED_TXS = []
 
 def get_supply():
@@ -105,10 +107,7 @@ def get_deposits(starting_height, session):
         yield nt
 
 def get_fee(amount):
-    if amount < 10000:
-        return 10
-    else:
-        return amount*0.01
+    return 10
 
 def build_transfer(address, amount, self_address, balance):
     print("SEND PID: {}".format(balance.paymentid[0:58] + balance.withdraw))
