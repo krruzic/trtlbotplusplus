@@ -15,13 +15,13 @@ if 'rpc_port' in config:
 else:
     rpc_port = ""
 rpc = Server("http://127.0.0.1:{}/json_rpc".format(rpc_port))
-daemon = Server("http://127.0.0.1:24182/json_rpc")
+daemon = Server("http://127.0.0.1:11898/json_rpc")
 CONFIRMED_TXS = []
 
 def get_supply():
     lastblock = daemon.getlastblockheader()
     bo = daemon.f_block_json(hash=lastblock["block_header"]["hash"])
-    return float(bo["block"]["alreadyGeneratedCoins"])/100000000
+    return float(bo["block"]["alreadyGeneratedCoins"])/100
 
 def format_hash(hashrate):
     i = 0

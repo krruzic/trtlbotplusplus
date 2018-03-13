@@ -21,14 +21,14 @@ from utils import config, format_hash, gen_paymentid, rpc, daemon, get_deposits,
 HEADERS = {'Content-Type': 'application/json'}
 
 ### SETUP ###
-engine = create_engine('sqlite:///ipbc.db')
+engine = create_engine('sqlite:///trtl.db')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
 
 
 async def wallet_watcher():
-    start = int(rpc.getStatus()['blockCount'])-1000
+    start = int(rpc.getStatus()['blockCount'])-10000
     while not client.is_closed:
         height = int(rpc.getStatus()['blockCount'])
         for tx in get_deposits(start, session):
@@ -41,10 +41,10 @@ async def wallet_watcher():
             start += 1000
         if start >= height:
             start = height-1
-        await asyncio.sleep(10)
+        await asyncio.sleep(25) # just less than the block time
 
 
-client = Bot(description="IPBC Bot", command_prefix=config['prefix'], pm_help = False)
+client = Bot(description="TRTL Tipping Bot", command_prefix=config['prefix'], pm_help = False)
 client.loop.create_task(wallet_watcher())
 
 @client.event
@@ -53,20 +53,20 @@ async def on_ready():
 
 
 ### MARKET COMMANDS ###
-#@client.command()
-#async def faucet():
-    """ Returns IPBC remaining in the faucet """
-#    resp = requests.get("https://faucet.ipbc.me/balance")
-#    desc = "```Donations: TRTLv14M1Q9223QdWMmJyNeY8oMjXs5TGP9hDc3GJFsUVdXtaemn1mLKA25Hz9PLu89uvDafx9A93jW2i27E5Q3a7rn8P2fLuVA```"
-#    em = discord.Embed(title = "The faucet has {:,} IPBC left".format(int(float(resp.json()['available']))), description = desc)
-#    em.url = "https://faucet.ipbc.me"
-#    await client.say(embed = em)
+@client.command()
+async def faucet():
+   """ Returns TRTL remaining in the faucet """
+   resp = requests.get("https://faucet.trtl.me/balance")
+   desc = "```Donations: TRTLv14M1Q9223QdWMmJyNeY8oMjXs5TGP9hDc3GJFsUVdXtaemn1mLKA25Hz9PLu89uvDafx9A93jW2i27E5Q3a7rn8P2fLuVA```"
+   em = discord.Embed(title = "The faucet has {:,} TRTL left".format(int(float(resp.json()['available']))), description = desc)
+   em.url = "https://faucet.TRTL.me"
+   await client.say(embed = em)
 
 @client.command()
 async def price(exchange=None):
     """ Returns price on TradeOgre """
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
-    lc = requests.get("https://api.livecoin.net/exchange/ticker?currencyPair=IPBC/BTC")
+    lc = requests.get("https://tradeogre.com/api/v1/ticker/BTC-TRTL")
     btc = requests.get("https://www.bitstamp.net/api/ticker/")
     try:
         to_json = lc.json()
@@ -74,29 +74,29 @@ async def price(exchange=None):
         err_embed.description = "The Livecoin api is down"
         await client.say(embed = err_embed)
         return
-    lc_embed = discord.Embed(title = "Current Price of IPBC: Livecoin", url = "https://www.livecoin.net/en/trade/index?currencyPair=IPBC%2FBTC")
+    lc_embed = discord.Embed(title = "Current Price of TRTL: Livecoin", url = "https://www.livecoin.net/en/trade/index?currencyPair=TRTL%2FBTC")
     lc_embed.add_field(name="Low", value="{0:,.0f} sats".format(round(float(lc.json()['low'])*100000000)), inline=True)
     lc_embed.add_field(name="Current", value="{0:,.0f} sats".format(round(float(lc.json()['last'])*100000000)), inline=True)
     lc_embed.add_field(name="High", value="{0:,.0f} sats".format(round(float(lc.json()['high'])*100000000)), inline=True)
-    lc_embed.add_field(name="IPBC-USD", value="${0:,.2f} USD".format(float(lc.json()['last'])*float(btc.json()['last'])), inline=True)
-    lc_embed.add_field(name="Volume", value="{0:,.2f} IPBC".format(float(lc.json()['volume'])), inline=True)
+    lc_embed.add_field(name="TRTL-USD", value="${0:,.2f} USD".format(float(lc.json()['last'])*float(btc.json()['last'])), inline=True)
+    lc_embed.add_field(name="Volume", value="{0:,.2f} TRTL".format(float(lc.json()['volume'])), inline=True)
     lc_embed.add_field(name="BTC-USD", value="${0:,.2f} USD".format(float(btc.json()['last'])), inline=True)
     await client.say(embed = lc_embed)
 
 @client.command()
 async def mcap():
-    """ Returns current marketcap w/ Livecoin data """
+    """ Returns current marketcap w/ TradeOgre data """
     btc = requests.get("https://www.bitstamp.net/api/ticker/")
     supply = get_supply()
-    ipbc = requests.get("https://api.livecoin.net/exchange/ticker?currencyPair=IPBC/BTC")
+    trtl = requests.get("https://tradeogre.com/api/v1/ticker/BTC-TRTL")
     try:
-        ipbc_json = ipbc.json()
+        trtl_json = trtl.json()
         btc_json = btc.json()
     except ValueError:
         await client.say("Unable to get market cap!")
         return
-    mcap = float(ipbc.json()['last'])*float(btc.json()['last'])*supply
-    await client.say("IPBC's Marketcap is **${0:,.2f}** USD".format(mcap))
+    mcap = float(trtl.json()['last'])*float(btc.json()['last'])*supply
+    await client.say("Turtlecoin's Marketcap is **${0:,.2f}** USD".format(mcap))
 
 
 ### NETWORK COMMANDS ###
@@ -104,8 +104,8 @@ async def mcap():
 async def hashrate():
     """ Returns network hashrate """
     data = daemon.getlastblockheader()
-    hashrate = format_hash(float(data["block_header"]["difficulty"]) / 120)
-    await client.say("The current global hashrate is **{}/s**".format(hashrate))
+    hashrate = format_hash(float(data["block_header"]["difficulty"]) / 30)
+    await client.say("The current global hashrate is **{:,.2f}/s**".format(hashrate))
 
 @client.command()
 async def difficulty():
@@ -121,9 +121,9 @@ async def height():
 
 @client.command()
 async def supply():
-    """ Returns the current circulating supply of IPBC """
+    """ Returns the current circulating supply of TRTL """
     supply = get_supply()
-    await client.say("The current circulating supply is **{:0,.2f}** IPBC".format(supply))
+    await client.say("The current circulating supply is **{:0,.2f}** TRTL".format(supply))
 
 
 ### WALLET COMMANDS ###
@@ -150,7 +150,7 @@ async def registerwallet(ctx, address):
         await client.say(embed = err_embed)
         return
 
-    elif not exists and len(address) == 97:
+    elif not exists and len(address) == 99:
         w = Wallet(address,ctx.message.author.id,ctx.message.id)
         session.add(w)
         session.commit()
@@ -167,22 +167,23 @@ async def registerwallet(ctx, address):
         else:
             balance.paymentid = pid
         return
-    elif len(address) > 97:
-        err_embed.description = "Your wallet must be 97 characeters long, your entry was too long"
-    elif len(address) < 97:
-        err_embed.description = "Your wallet must be 97 characeters long, your entry was too short"
+    elif len(address) > 99:
+        err_embed.description = "Your wallet must be 99 characeters long, your entry was too long"
+    elif len(address) < 99:
+        err_embed.description = "Your wallet must be 99 characeters long, your entry was too short"
     await client.say(embed = err_embed)
 
 @client.command(pass_context = True)
 async def updatewallet(ctx, address):
     """ Updates your wallet address """
+    err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
+
     if address == None:
         err_embed.description = "Please provide an address"
         await client.say(embed = err_embed)
         return
 
     address = address.strip()
-    err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     good_embed = discord.Embed(title="{}'s Updated Wallet".format(ctx.message.author.name),colour=discord.Colour(0xD4AF37))
     exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
     if not exists:
@@ -193,7 +194,7 @@ async def updatewallet(ctx, address):
         err_embed.description = "Address already registered by another user!"
         await client.say(embed = err_embed)
         return
-    elif exists and len(address) == 97:
+    elif exists and len(address) == 99:
         old_pid = gen_paymentid(exists.address)
         old_balance = session.query(TipJar).filter(TipJar.paymentid == old_pid).first()
         exists.address = address
@@ -212,10 +213,10 @@ async def updatewallet(ctx, address):
             balance.paymentid = pid
             balance.amount += old_balance.amount
         return
-    elif len(address) > 97:
-        err_embed.description = "Your wallet must be 97 characeters long, your entry was too long"
-    elif len(address) < 97:
-        err_embed.description = "Your wallet must be 97 characeters long, your entry was too short"
+    elif len(address) > 99:
+        err_embed.description = "Your wallet must be 99 characeters long, your entry was too long"
+    elif len(address) < 99:
+        err_embed.description = "Your wallet must be 99 characeters long, your entry was too short"
     await client.say(embed = err_embed)
 
 @client.command(pass_context = True)
@@ -252,7 +253,7 @@ async def deposit(ctx, user: discord.User=None):
     tipjar_addr = rpc.getAddresses()['addresses'][0]
     if exists:
         pid = gen_paymentid(exists.address)
-        good_embed.description = "Deposit IPBC to start tipping! ```transfer 3 {} <amount> -p {}```".format(tipjar_addr, pid)
+        good_embed.description = "Deposit TRTL to start tipping! ```transfer 3 {} <amount> -p {}```".format(tipjar_addr, pid)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
         if not balance:
             t = TipJar(pid, ctx.message.author.id, 0)
@@ -278,7 +279,7 @@ async def balance(ctx, user: discord.User=None):
             session.add(t)
             session.commit()
         else:
-            good_embed.description = "`{0:,.8f}` IPBC".format(balance.amount / 100000000)
+            good_embed.description = "`{0:,.8f}` TRTL".format(balance.amount / 100)
             await client.send_message(ctx.message.author, embed = good_embed)
     else:
         err_embed.description = "You haven't registered a wallet!"
@@ -288,7 +289,7 @@ async def balance(ctx, user: discord.User=None):
 
 @client.command(pass_context = True)
 async def tip(ctx, amount, user: discord.User=None):
-    """ Tips a user <amount> IPBC """
+    """ Tips a user <amount> TRTL """
     if not user:
         await client.say("Usage: !tip <amount> @username")
 
@@ -298,15 +299,15 @@ async def tip(ctx, amount, user: discord.User=None):
     good_embed = discord.Embed(title="You were tipped!",colour=discord.Colour(0xD4AF37))
 
     try:
-        amount = int(round(float(amount)*100000000))
+        amount = int(round(float(amount)*100))
         print(amount)
     except:
         if user:
             await client.say("Usage: !tip <amount> @username")
         else:
             await client.say("Usage: !tip <amount> @username")
-    if amount <= 10000:
-        err_embed.description = "`amount` must be greater than 0.0001"
+    if amount <= 100:
+        err_embed.description = "`amount` must be greater than 0.01"
         await client.say(embed = err_embed)
         return
     user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
@@ -335,7 +336,7 @@ async def tip(ctx, amount, user: discord.User=None):
                 await client.send_message(ctx.message.author, "It has been reset to zero")
                 return
             if amount + fee > balance.amount:
-                err_embed.description = "Your balance is too low! Amount + Fee = `{}` IPBC".format((amount+fee) / 100000000)
+                err_embed.description = "Your balance is too low! Amount + Fee = `{}` TRTL".format((amount+fee) / 100)
                 await client.send_message(ctx.message.author, embed=err_embed)
                 return
             else:
@@ -352,9 +353,9 @@ async def tip(ctx, amount, user: discord.User=None):
                 except:
                     session.rollback()
                     raise
-                await client.say("Sent `{0:,.8f}` IPBC".format(amount / 100000000))
-                good_embed.description = "{} sent you `{}` IPBC with Transaction Hash ```{}```".format(ctx.message.author.mention, amount / 100, result['transactionHash'])
-                good_embed.url = "https://ipbc.io/blockchain?hash={}&action_blockchain=blockchain_transaction".format(result['transactionHash'])
+                await client.say("Sent `{0:,.2f}` TRTL".format(amount / 100))
+                good_embed.description = "{} sent you `{}` TRTL with Transaction Hash ```{}```".format(ctx.message.author.mention, amount / 100, result['transactionHash'])
+                good_embed.url = "https://TRTL.io/blockchain?hash={}&action_blockchain=blockchain_transaction".format(result['transactionHash'])
                 await client.send_message(user, embed = good_embed)
 
                 balance.amount -= amount+fee
