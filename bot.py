@@ -394,8 +394,4 @@ async def tip(ctx, amount, user: discord.User=None):
         err_embed.add_field(name="Help", value="Use `!registerwallet <addr>` before trying to tip!")
     await client.say(embed = err_embed)
 
-
-async def check_user_exists(user, embed):
-
-
 client.run(config['token'])
