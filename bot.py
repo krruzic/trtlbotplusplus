@@ -39,11 +39,14 @@ async def wallet_watcher():
                 session.commit()
             except:
                 session.rollback()
-            good_embed = discord.Embed(title="Deposit Recieved!",colour=discord.Colour(0xD4AF37))
-            good_embed.description = "Your deposit of {} TRTL has now been credited.".format(tx.amount/100)
-            print("TRANSACTION PID IS: " + tx.paymentid)
             balance = session.query(TipJar).filter(TipJar.paymentid == tx.paymentid).first()
-            good_embed.add_field(name="New Balance", value="{0:,.2f}".format(balance.amount/100))
+            if not balance: # don't do for withdrawal
+                return
+
+            good_embed = discord.Embed(title="Deposit Recieved!",colour=discord.Colour(0xD4AF37))
+            good_embed.description = "Your deposit of {} TRTL has now been credited.".format(tx.amount/config['units'])
+            print("TRANSACTION PID IS: " + tx.paymentid)
+            good_embed.add_field(name="New Balance", value="{0:,.2f}".format(balance.amount/config['units']))
             user = await client.get_user_info(str(balance.userid))
             await client.send_message(user, embed = good_embed)
         if start < height:
@@ -427,6 +430,10 @@ async def tip(ctx, amount, user: discord.User=None):
             destinations.append({'amount': amount, 'address': user_exists.address})
         else:
             failed+=1
+
+    if len(destinations)==0:
+        await client.add_reaction(ctx.message, '\U0001F198')
+        return
 
     transfer = build_transfer(amount, destinations, balance)
     print(transfer)
