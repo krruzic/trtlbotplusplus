@@ -52,7 +52,7 @@ def gen_paymentid(address):
 
 def get_deposits(starting_height, session):
     print("scanning deposits at block: ", starting_height)
-    transactionData = rpc.getTransactions(firstBlockIndex=starting_height, blockCount=100)
+    transactionData = rpc.getTransactions(firstBlockIndex=starting_height, blockCount=1000)
     for item in transactionData['items']:
         for tx in item['transactions']:
             if tx['paymentId'] == '':
@@ -89,10 +89,11 @@ def get_deposits(starting_height, session):
             address = transfer['address']
             amount = transfer['amount']
             change = 0
-            if address in rpc.getAddresses()['addresses'] and trs['pid']==balance.paymentid: # money entering tipjar, add to user balance
-                print("deposit of {}".format(amount))
-                print("Depositing to: {}".format(balance.paymentid))
-                change += amount
+            if address in rpc.getAddresses()['addresses']:
+                if trs['pid']==balance.paymentid: # money entering tipjar, add to user balance
+                    print("deposit of {}".format(amount))
+                    print("Depositing to: {}".format(balance.paymentid))
+                    change += amount
             elif address != "" and trs['pid'] == (balance.paymentid[0:58] + balance.withdraw): # money leaving tipjar, remove from user's balance
                 print("withdrawal of {}".format(amount))
                 change -= (amount+data['transaction']['fee'])

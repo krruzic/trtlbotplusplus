@@ -44,20 +44,20 @@ async def wallet_watcher():
                 return
 
             good_embed = discord.Embed(title="Deposit Recieved!",colour=discord.Colour(0xD4AF37))
-            good_embed.description = "Your deposit of {} TRTL has now been credited.".format(tx.amount/config['units'])
+            good_embed.description = "Your deposit of {} {} has now been credited.".format(tx.amount/config['units'], config['symbol'])
             print("TRANSACTION PID IS: " + tx.paymentid)
             good_embed.add_field(name="New Balance", value="{0:,.2f}".format(balance.amount/config['units']))
             user = await client.get_user_info(str(balance.userid))
             await client.send_message(user, embed = good_embed)
         if start < height:
-            start += 100
+            start += 1000
         if start >= height:
             start = height-1
-        await asyncio.sleep(1) # just less than the block time
+        await asyncio.sleep(0.5) # just less than the block time
 
 
 
-client = Bot(description="TRTL Tipping Bot", command_prefix=config['prefix'], pm_help = False)
+client = Bot(description="{} Tipping Bot".format(config['symbol']), command_prefix=config['prefix'], pm_help = False)
 client.loop.create_task(wallet_watcher())
 
 @client.event
@@ -94,10 +94,10 @@ async def on_ready():
 @client.command()
 async def faucet():
    """ Returns balance in the faucet """
-   resp = requests.get("https://faucet.trtl.me/balance")
-   desc = "```Donations: TRTLv14M1Q9223QdWMmJyNeY8oMjXs5TGP9hDc3GJFsUVdXtaemn1mLKA25Hz9PLu89uvDafx9A93jW2i27E5Q3a7rn8P2fLuVA```"
-   em = discord.Embed(title = "The faucet has {:,} TRTL left".format(int(float(resp.json()['available']))), description = desc)
-   em.url = "https://faucet.trtl.me"
+   resp = requests.get("https://faucet.{}.me/balance".format(config['symbol']))
+   desc = "```Donations: {}```".format(config['faucet'])
+   em = discord.Embed(title = "The faucet has {:,} {} left".format(int(float(resp.json()['available'])), config['symbol']), description = desc)
+   em.url = "https://faucet.{}.me".format(config['symbol'])
    await client.say(embed = em)
 
 @client.command(pass_context = True)
@@ -226,7 +226,7 @@ async def registerwallet(ctx, address):
         session.commit()
         tipjar_addr = rpc.getAddresses()['addresses'][0]
         good_embed.title = "Your Tipjar Info"
-        good_embed.description = "Deposit TRTL to start tipping! ```transfer 3 {} <amount> -p {}```".format(tipjar_addr, pid)
+        good_embed.description = "Deposit {} to start tipping! ```transfer 3 {} <amount> -p {}```".format(config['symbol'], tipjar_addr, pid)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
         await client.send_message(ctx.message.author, embed = good_embed)
         return
@@ -274,7 +274,7 @@ async def updatewallet(ctx, address):
 
         tipjar_addr = rpc.getAddresses()['addresses'][0]
         good_embed.title = "Your Tipjar Info"
-        good_embed.description = "Deposit TRTL to start tipping! ```transfer 3 {} <amount> -p {}```".format(tipjar_addr, pid)
+        good_embed.description = "Deposit {} to start tipping! ```transfer 3 {} <amount> -p {}```".format(config['symbol'], tipjar_addr, pid)
         await client.send_message(ctx.message.author, embed = good_embed)
 
         good_embed.title = "Balance Update"
@@ -326,7 +326,7 @@ async def deposit(ctx, user: discord.User=None):
     tipjar_addr = rpc.getAddresses()['addresses'][0]
     if exists:
         pid = gen_paymentid(exists.address)
-        good_embed.description = "Deposit TRTL to start tipping! ```transfer 3 {} <amount> -p {}```".format(tipjar_addr, pid)
+        good_embed.description = "Deposit {} to start tipping! ```transfer 3 {} <amount> -p {}```".format(config['symbol'], tipjar_addr, pid)
         balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
         if not balance:
             t = TipJar(pid, ctx.message.author.id, 0)
@@ -457,6 +457,6 @@ async def tip(ctx, amount, user: discord.User=None):
         await client.send_message(user, embed = good_embed)
 
     if failed>=1:
-        await client.send_message(ctx.message.author, "Successfully sent to {0} users. {} failed.".format(num_users-failed, failed))
+        await client.send_message(ctx.message.author, "Successfully sent to {0} users. {1} failed.".format(num_users-failed, failed))
 
 client.run(config['token'])
