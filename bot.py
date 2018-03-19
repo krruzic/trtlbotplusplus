@@ -124,7 +124,7 @@ async def price(ctx, exchange=None):
     coindata_embed.add_field(name="Current", value="{0:,.0f} sats".format(round(float(coindata.json()['price'])*100000000)), inline=True)
     coindata_embed.add_field(name="High", value="{0:,.0f} sats".format(round(float(coindata.json()['high'])*100000000)), inline=True)
 
-    coindata_embed.add_field(name="{}-USD".format(config['symbol']), 
+    coindata_embed.add_field(name="{}-USD".format(config['symbol']),
         value="${0:,.4f} USD".format(float(coindata.json()['price'])*float(btc.json()['last'])), inline=True)
 
     coindata_embed.add_field(name="Volume", value="{:,.2f} BTC".format(float(coindata.json()['volume'])), inline=True)
@@ -441,22 +441,22 @@ async def tip(ctx, amount, user: discord.User=None):
     print(result)
 
     await client.add_reaction(ctx.message, "\U0001F4B8")
-    await client.send_message(ctx.message.author, "Sent `{0:,.2f}` {1} to {2} users!".format(amount / config['units'], config['symbol'], num_users-failed))
 
     balance.amount -= ((num_users*amount)+fee)
     tx = Transaction(result['transactionHash'], num_users*amount, balance.paymentid)
     session.add(tx)
     session.commit()
-    good_embed.title = "Balance Update"
-    good_embed.description = "New Balance: `{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol'])
+    good_embed.title = "Tip Sent!"
+    good_embed.description = "Sent `{0:,.2f}` {1} to {2} users! With Transaction Hash ```{3}```"\
+           .format(amount / config['units'], config['symbol'], num_users-failed, result['transactionHash'])
+    good_embed.add_field(name="New Balance", value="`{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol']))
+    good_embed.add_field(name="Transfer Info", value="Successfully sent to {0} users. {1} failed.".format(num_users-failed, failed))
     await client.send_message(ctx.message.author, embed = good_embed)
 
     for user in tipees:
+        good_embed = discord.Embed(title="You were tipped!",colour=discord.Colour(0xD4AF37))
         good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(ctx.message.author.mention, amount / config['units'], config['symbol'], result['transactionHash'])
         good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
         await client.send_message(user, embed = good_embed)
-
-    if failed>=1:
-        await client.send_message(ctx.message.author, "Successfully sent to {0} users. {1} failed.".format(num_users-failed, failed))
 
 client.run(config['token'])

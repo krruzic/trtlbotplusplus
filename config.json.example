@@ -1,5 +1,15 @@
 {
-  "token":"YOUR_BOT_TOKEN",
-  "prefix":"!",
-  "rpc_password":"PASSWORD"
+  "token":"YOURDISCORDTOKEN",
+  "prefix":".", # use something like ! , . ~ ` ?
+  "coin": "Turtlecoin",
+  "symbol": "TRTL", 
+  # faucet address if configured
+  "faucet": "TRTLv14M1Q9223QdWMmJyNeY8oMjXs5TGP9hDc3GJFsUVdXtaemn1mLKA25Hz9PLu89uvDafx9A93jW2i27E5Q3a7rn8P2fLuVA", # url to faucet
+  "price_source": "TradeOgre", # name to display in price command
+  "price_endpoint": "https://tradeogre.com/api/v1/ticker/BTC-TRTL", # api price source
+  "units": 100, # number of decimal places
+  "daemon_port": "11898",
+  "rpc_password":"turtlecoinonly",
+  "rpc_port":"8070"
 }
+
