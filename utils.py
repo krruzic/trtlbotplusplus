@@ -1,30 +1,33 @@
 import random
 import sys
-import os
 import binascii
 import json
-import pprint
+from collections import deque
 
-from jsonrpc_requests import Server, ProtocolError
+from jsonrpc_requests import Server
 
 
 from models import Transaction, TipJar
 
 config = json.load(open('config.json'))
 
+
 class TrtlServer(Server):
     def dumps(self, data):
         data['password'] = config['rpc_password']
         return json.dumps(data)
 
-rpc = TrtlServer("http://127.0.0.1:{}/json_rpc".format(config['rpc_port']))
-daemon = TrtlServer("http://127.0.0.1:{}/json_rpc".format(config['daemon_port']))
+
+rpc = TrtlServer("http://{}:{}/json_rpc".format(config['rpc_host'], config['rpc_port']))
+daemon = TrtlServer("http://{}:{}/json_rpc".format(config['daemon_host'], config['daemon_port']))
 CONFIRMED_TXS = []
+
 
 def get_supply():
     lastblock = daemon.getlastblockheader()
     bo = daemon.f_block_json(hash=lastblock["block_header"]["hash"])
     return float(bo["block"]["alreadyGeneratedCoins"])/100
+
 
 def format_hash(hashrate):
     i = 0
@@ -34,9 +37,9 @@ def format_hash(hashrate):
         i = i+1
     return "{0:,.2f} {1}".format(hashrate, byteUnits[i])
 
+
 def gen_paymentid(address):
     rng = random.Random(address+config['token'])
-    results = []
     length = 32
     chunk_size = 65535
     chunks = []
@@ -109,8 +112,10 @@ def get_deposits(starting_height, session):
             CONFIRMED_TXS.pop(i)
             yield nt
 
+
 def get_fee(amount):
     return 10
+
 
 def build_transfer(amount, transfers, balance):
     print("SEND PID: {}".format(balance.paymentid[0:58] + balance.withdraw))
@@ -122,3 +127,29 @@ def build_transfer(amount, transfers, balance):
         'transfers': transfers
     }
     return params
+
+
+REACTION_AMP_CACHE = deque([], 25)
+
+
+def reaction_tip_lookup(message):
+    for x in REACTION_AMP_CACHE:
+        if x['msg'] == message:
+            return x
+
+
+def reaction_tip_register(message, user):
+    msg = reaction_tip_lookup(message)
+    if not msg:
+        msg = {'msg': message, 'tips': []}
+        REACTION_AMP_CACHE.append(msg)
+
+    msg['tips'].append(user)
+
+    return msg
+
+
+def reaction_tipped_already(message, user):
+    msg = reaction_tip_lookup(message)
+    if msg:
+        return user in msg['tips']
