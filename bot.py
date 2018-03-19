@@ -431,8 +431,6 @@ async def _tip(ctx, amount, user: discord.User=None):
     self_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
     tipees = ctx.message.mentions
 
-    num_users = len(tipees)
-
     if not self_exists:
         err_embed.description = "You haven't registered a wallet!"
         err_embed.add_field(name="Help", value="Use `{}registerwallet <addr>` before trying to tip!".format(config['prefix']))
