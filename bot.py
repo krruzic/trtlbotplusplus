@@ -388,7 +388,6 @@ async def tip(ctx, amount, user: discord.User=None):
     fee = get_fee(amount)
     self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
     tipees = ctx.message.mentions
-    num_users = len(tipees)
     if not self_exists:
         err_embed.description = "You haven't registered a wallet!"
         err_embed.add_field(name="Help", value="Use `{}registerwallet <addr>` before trying to tip!".format(config['prefix']))
@@ -417,18 +416,21 @@ async def tip(ctx, amount, user: discord.User=None):
         await client.send_message(madk, embed = err_embed)
         return
 
-    if (num_users*(amount)+fee) > balance.amount:
-        err_embed.description = "Your balance is too low! Amount + Fee = `{}` {}".format((num_users*(amount)+fee) / config['units'], config['symbol'])
+    if ((len(tipees)*(amount))+fee) > balance.amount:
+        err_embed.description = "Your balance is too low! Amount + Fee = `{}` {}".format(((len(tipees)*(amount))+fee) / config['units'], config['symbol'])
         await client.add_reaction(ctx.message, "\u274C")
         await client.send_message(ctx.message.author, embed=err_embed)
         return
     destinations = []
     failed=0
+    actual_users=[]
     for user in tipees:
         user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
         if user_exists:
             destinations.append({'amount': amount, 'address': user_exists.address})
+            actual_users.append(user)
         else:
+            print("user {} does not exist!!".format(user))
             failed+=1
 
     if len(destinations)==0:
@@ -442,18 +444,19 @@ async def tip(ctx, amount, user: discord.User=None):
 
     await client.add_reaction(ctx.message, "\U0001F4B8")
 
-    balance.amount -= ((num_users*amount)+fee)
-    tx = Transaction(result['transactionHash'], num_users*amount, balance.paymentid)
+    balance.amount -= ((len(actual_users)*amount)+fee)
+    tx = Transaction(result['transactionHash'], (len(actual_users)*amount)+fee, balance.paymentid)
     session.add(tx)
     session.commit()
     good_embed.title = "Tip Sent!"
     good_embed.description = "Sent `{0:,.2f}` {1} to {2} users! With Transaction Hash ```{3}```"\
-           .format(amount / config['units'], config['symbol'], num_users-failed, result['transactionHash'])
+           .format(amount / config['units'], config['symbol'], len(actual_users), result['transactionHash'])
+    good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
     good_embed.add_field(name="New Balance", value="`{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol']))
-    good_embed.add_field(name="Transfer Info", value="Successfully sent to {0} users. {1} failed.".format(num_users-failed, failed))
+    good_embed.add_field(name="Transfer Info", value="Successfully sent to {0} users. {1} failed.".format(len(actual_users), failed))
     await client.send_message(ctx.message.author, embed = good_embed)
 
-    for user in tipees:
+    for user in actual_users:
         good_embed = discord.Embed(title="You were tipped!",colour=discord.Colour(0xD4AF37))
         good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(ctx.message.author.mention, amount / config['units'], config['symbol'], result['transactionHash'])
         good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
