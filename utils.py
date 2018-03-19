@@ -129,7 +129,7 @@ def build_transfer(amount, transfers, balance):
     return params
 
 
-REACTION_AMP_CACHE = deque([], 25)
+REACTION_AMP_CACHE = deque([], 500)
 
 
 def reaction_tip_lookup(message):

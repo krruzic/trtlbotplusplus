@@ -21,11 +21,11 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
 
+
 client = Bot(
         description="{} Tipping Bot".format(config['symbol']),
         command_prefix=config['prefix'],
         pm_help=False)
-
 
 async def wallet_watcher():
     await client.wait_until_ready()
@@ -378,7 +378,7 @@ async def on_reaction_add(reaction, user):
         # extract the tip amount
         # .tip {amount} {tipees}
         message_amount = message.content.split(' ')[1]
-        amount = int(round(float(message_amount) * config['units']))
+        amount = int(round(float(message_amount))) # multiply by coin units in the actual tip command
     except:
         print("invalid tip message format ({})".format(message.content))
         return
@@ -397,25 +397,21 @@ async def on_reaction_add(reaction, user):
 
 
 @client.command(pass_context=True)
-async def tip(ctx, amount, user: discord.User=None):
-    await _tip(ctx, amount, user)
+async def tip(ctx, amount, sender):
+    await _tip(ctx, amount, None)
 
 
-async def _tip(ctx, amount, user: discord.User=None):
+async def _tip(ctx, amount, sender: discord.User=None):
     """ Tips a user <amount> of coin """
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
+    if not sender: # regular tip
+        sender = ctx.message.author
 
     try:
         amount = int(round(float(amount)*config['units']))
     except:
-        if user:
-            await client.say("Amount must be a number > {}".format(10 / config['units']))
-        else:
-            await client.say("Usage: {}tip <amount> @username".format(config['prefix']))
-        return False
-    if not user:
-        await client.say("Usage: {}tip <amount> @username".format(config['prefix']))
+        await client.say("Amount must be a number > {}".format(10 / config['units']))
         return False
 
     if amount <= 10:
@@ -424,7 +420,7 @@ async def _tip(ctx, amount, user: discord.User=None):
         return False
 
     fee = get_fee(amount)
-    self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    self_exists = session.query(Wallet).filter(Wallet.userid == sender.id).first()
     tipees = ctx.message.mentions
     if not self_exists:
         err_embed.description = "You haven't registered a wallet!"
@@ -435,21 +431,21 @@ async def _tip(ctx, amount, user: discord.User=None):
     pid = gen_paymentid(self_exists.address)
     balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
     if not balance:
-        t = TipJar(pid, ctx.message.author.id, 0)
+        t = TipJar(pid, sender.id, 0)
         session.add(t)
         session.commit()
         err_embed.description = "You are now registered, please `{}deposit` to tip".format(config['prefix'])
-        await client.send_message(ctx.message.author, embed=err_embed)
+        await client.send_message(sender, embed=err_embed)
         return False
 
     if balance.amount < 0:
         balance.amount = 0
         session.commit()
         err_embed.description = "Your balance was negative!"
-        await client.send_message(ctx.message.author, embed=err_embed)
+        await client.send_message(sender, embed=err_embed)
 
         madk = discord.utils.get(client.get_all_members(), id='200823661928644617')
-        err_embed.title = "{} had a negative balance!!".format(ctx.message.author.name)
+        err_embed.title = "{} had a negative balance!!".format(sender.name)
         err_embed.description = "PID: {}".format(pid)
 
         await client.send_message(madk, embed=err_embed)
@@ -458,7 +454,7 @@ async def _tip(ctx, amount, user: discord.User=None):
     if ((len(tipees)*(amount))+fee) > balance.amount:
         err_embed.description = "Your balance is too low! Amount + Fee = `{}` {}".format(((len(tipees)*(amount))+fee) / config['units'], config['symbol'])
         await client.add_reaction(ctx.message, "\u274C")
-        await client.send_message(ctx.message.author, embed=err_embed)
+        await client.send_message(sender, embed=err_embed)
         return False
 
     destinations = []
@@ -468,7 +464,7 @@ async def _tip(ctx, amount, user: discord.User=None):
         user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
         if user_exists:
             destinations.append({'amount': amount, 'address': user_exists.address})
-            if user_exists.userid == ctx.message.author.id: # multitip shouldn't tip self.
+            if user_exists.userid != sender.id: # multitip shouldn't tip self.
                 actual_users.append(user)
         else:
             print("user {} does not exist!!".format(user))
@@ -494,12 +490,11 @@ async def _tip(ctx, amount, user: discord.User=None):
     good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
     good_embed.add_field(name="New Balance", value="`{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol']))
     good_embed.add_field(name="Transfer Info", value="Successfully sent to {0} users. {1} failed.".format(len(actual_users), failed))
-    await client.send_message(ctx.message.author, embed = good_embed)
+    await client.send_message(sender, embed = good_embed)
 
     for user in actual_users:
         good_embed = discord.Embed(title="You were tipped!",colour=discord.Colour(0xD4AF37))
-        good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
-        good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(ctx.message.author.mention, amount / config['units'], config['symbol'], result['transactionHash'])
+        good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(sender.mention, amount / config['units'], config['symbol'], result['transactionHash'])
         good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
 
         await client.send_message(user, embed=good_embed)
