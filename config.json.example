@@ -4,6 +4,8 @@
   "coin": "Turtlecoin",
   "symbol": "TRTL", 
   "tip_amp_emoji": "tip",
+  "tip_any_emoji": "tip100",
+  "tip_any_amount": 100,
   # faucet address if configured
   "faucet": "TRTLv14M1Q9223QdWMmJyNeY8oMjXs5TGP9hDc3GJFsUVdXtaemn1mLKA25Hz9PLu89uvDafx9A93jW2i27E5Q3a7rn8P2fLuVA", # url to faucet
   "price_source": "TradeOgre", # name to display in price command
