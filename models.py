@@ -57,9 +57,13 @@ class Transaction(Base):
 
     id          =   Column(Integer, primary_key=True)
     tx          =   Column(String(128), unique=True, nullable=False)
+    amount      =   Column(Integer, default=0)
+    paymentid   =   Column(String(64), unique=True, nullable=False)
 
     def __repr__(self):
-        return "<tx hash {}>".format(self.tx)
+        return "<tx hash {} transferred {} to PID: {}>".format(self.tx, self.amount, self.paymentid)
 
-    def __init__(self, tx):
+    def __init__(self, tx, amount, pid):
         self.tx = tx
+        self.amount = amount
+        self.paymentid = pid

@@ -1,12 +1,17 @@
 aiohttp==1.0.5
+astunparse-noparen==1.5.6
 async-timeout==2.0.0
+async2rewrite==0.1.5
 certifi==2018.1.18
 chardet==3.0.4
+dictproxyhack==1.1
 discord.py==0.16.12
 idna==2.6
 jsonrpc-requests==0.4.0
 multidict==4.1.0
 requests==2.18.4
+six==1.11.0
 SQLAlchemy==1.2.2
+systemd==0.14.0
 urllib3==1.22
 websockets==3.4
