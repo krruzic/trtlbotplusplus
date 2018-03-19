@@ -395,6 +395,10 @@ async def on_reaction_add(reaction, user):
         amount = config['tip_any_amount']
         receiver = message.author
 
+    else:
+        # terminate, a custom emoji that we don't care about.
+        return
+
     fake_ctx = Context(message=reaction.message, prefix=config['prefix'])
     success = await _tip(fake_ctx, amount, user, receiver)
 
