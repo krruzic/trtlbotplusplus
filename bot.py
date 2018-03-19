@@ -351,45 +351,56 @@ EMOJI_ERROR = "\u274C"
 async def on_reaction_add(reaction, user):
     message = reaction.message
     mentions = message.mentions
+    receiver = None
 
-    if not message.content.startswith("{}tip".format(config['prefix'])):
-        # only tip on tip commands
-        return
-
-    if len(mentions) == 0 or message.author == user:
-        print("no mentions / self double-tip / re-initial tip")
-        # don't double-tip.
+    if type(reaction.emoji) is str:
+        # nobody cares about your basic emoji, discord.
         return
 
     if reaction_tipped_already(message, user):
         print("no duplicate amplifications / user already joined in")
         return
 
-    if EMOJI_MONEYBAGS not in [r.emoji for r in message.reactions]:
-        # only amplify tip when the bot confirms with moneybags emoji
-        return
-
-    if type(reaction.emoji) is str \
-            or reaction.emoji.name != config['tip_amp_emoji']:
+    if reaction.emoji.name == config['tip_amp_emoji']:
         # only tip with the right emoji (:tip: custom emoji by default)
-        return
+        if not message.content.startswith("{}tip".format(config['prefix'])):
+            # only tip on tip commands
+            return
 
-    try:
-        # extract the tip amount
-        # .tip {amount} {tipees}
-        message_amount = message.content.split(' ')[1]
-        amount = int(round(float(message_amount))) # multiply by coin units in the actual tip command
-    except:
-        print("invalid tip message format ({})".format(message.content))
-        return
+        if len(mentions) == 0 or message.author == user:
+            print("no mentions / self double-tip / re-initial tip")
+            # don't double-tip.
+            return
 
-    print("user {} joined tip!".format(user))
-    await client.send_message(
-            user,
-            "You joined in the {} {} tip!".format(message_amount, config['symbol']))
+        if EMOJI_MONEYBAGS not in [r.emoji for r in message.reactions]:
+            # only amplify tip when the bot confirms with moneybags emoji
+            return
+
+        try:
+            # extract the tip amount
+            # .tip {amount} {tipees}
+            message_amount = message.content.split(' ')[1]
+            amount = int(round(float(message_amount))) # multiply by coin units in the actual tip command
+        except:
+            print("invalid tip message format ({})".format(message.content))
+            return
+
+        print("user {} joined tip!".format(user))
+        await client.send_message(
+                user,
+                "You joined in the {} {} tip!".format(message_amount, config['symbol']))
+
+    elif reaction.emoji.name == config['tip_any_emoji']:
+        # tipping any message a static amount.
+        amount = config['tip_any_amount']
+        receiver = message.author
+
+    else:
+        # terminate, a custom emoji that we don't care about.
+        return
 
     fake_ctx = Context(message=reaction.message, prefix=config['prefix'])
-    success = await _tip(fake_ctx, amount, user)
+    success = await _tip(fake_ctx, amount, user, receiver)
 
     if success:
         # add user + message combo to tip cache.
@@ -398,15 +409,24 @@ async def on_reaction_add(reaction, user):
 
 @client.command(pass_context=True)
 async def tip(ctx, amount, sender):
-    await _tip(ctx, amount, None)
+    await _tip(ctx, amount, None, None)
 
 
-async def _tip(ctx, amount, sender: discord.User=None):
+async def _tip(ctx, amount,
+               sender: discord.User=None,
+               receiver: discord.User=None):
     """ Tips a user <amount> of coin """
+
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
-    if not sender: # regular tip
+
+    if not sender:  # regular tip
         sender = ctx.message.author
+
+    if not receiver:
+        tipees = ctx.message.mentions
+    else:
+        tipees = [receiver, ]
 
     try:
         amount = int(round(float(amount)*config['units']))
@@ -421,7 +441,7 @@ async def _tip(ctx, amount, sender: discord.User=None):
 
     fee = get_fee(amount)
     self_exists = session.query(Wallet).filter(Wallet.userid == sender.id).first()
-    tipees = ctx.message.mentions
+
     if not self_exists:
         err_embed.description = "You haven't registered a wallet!"
         err_embed.add_field(name="Help", value="Use `{}registerwallet <addr>` before trying to tip!".format(config['prefix']))
@@ -464,7 +484,7 @@ async def _tip(ctx, amount, sender: discord.User=None):
         user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
         if user_exists:
             destinations.append({'amount': amount, 'address': user_exists.address})
-            if user_exists.userid != sender.id: # multitip shouldn't tip self.
+            if user_exists.userid != sender.id:  # multitip shouldn't tip self.
                 actual_users.append(user)
         else:
             print("user {} does not exist!!".format(user))
@@ -485,17 +505,31 @@ async def _tip(ctx, amount, sender: discord.User=None):
     session.add(tx)
     session.commit()
     good_embed.title = "Tip Sent!"
-    good_embed.description = "Sent `{0:,.2f}` {1} to {2} users! With Transaction Hash ```{3}```"\
-           .format(amount / config['units'], config['symbol'], len(actual_users), result['transactionHash'])
-    good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
+    good_embed.description = (
+        "Sent `{0:,.2f}` {1} to {2} users! With Transaction Hash ```{3}```"
+        .format(amount / config['units'],
+                config['symbol'],
+                len(actual_users),
+                result['transactionHash']))
+    good_embed.url = (
+        "https://blocks.turtle.link/?hash={}#blockchain_transaction"
+        .format(result['transactionHash']))
+
     good_embed.add_field(name="New Balance", value="`{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol']))
     good_embed.add_field(name="Transfer Info", value="Successfully sent to {0} users. {1} failed.".format(len(actual_users), failed))
-    await client.send_message(sender, embed = good_embed)
+    await client.send_message(sender, embed=good_embed)
 
     for user in actual_users:
-        good_embed = discord.Embed(title="You were tipped!",colour=discord.Colour(0xD4AF37))
-        good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(sender.mention, amount / config['units'], config['symbol'], result['transactionHash'])
-        good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
+        good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
+        good_embed.description = (
+            "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```"
+            .format(sender.mention,
+                    amount / config['units'],
+                    config['symbol'],
+                    result['transactionHash']))
+        good_embed.url = (
+            "https://blocks.turtle.link/?hash={}#blockchain_transaction"
+            .format(result['transactionHash']))
 
         await client.send_message(user, embed=good_embed)
 
