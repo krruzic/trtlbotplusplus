@@ -349,14 +349,18 @@ EMOJI_ERROR = "\u274C"
 
 @client.event
 async def on_reaction_add(reaction, user):
+
+    # remove the reaction tipper from the list of tipees, so they don't tip 
+    # themselves on multi-tips.
+    reaction.message.mentions = [m for m in reaction.message.mentions if m != user]
+
     message = reaction.message
-    mentions = message.mentions
 
     if not message.content.startswith("{}tip".format(config['prefix'])):
         # only tip on tip commands
         return
 
-    if len(mentions) == 0 or message.author == user:
+    if len(reaction.message.mentions) == 0 or message.author == user:
         print("no mentions / self double-tip / re-initial tip")
         # don't double-tip.
         return
@@ -386,7 +390,7 @@ async def on_reaction_add(reaction, user):
     print("user {} joined tip!".format(user))
     await client.send_message(
             user,
-            "You joined in the {} {} tip!".format(message_amount, config['symbol']))
+            "You are joining in the {} {} tip!".format(message_amount, config['symbol']))
 
     fake_ctx = Context(message=reaction.message, prefix=config['prefix'])
     success = await _tip(fake_ctx, amount, user)
@@ -424,8 +428,9 @@ async def _tip(ctx, amount, user: discord.User=None):
         return False
 
     fee = get_fee(amount)
-    self_exists = session.query(Wallet).filter(Wallet.userid == ctx.message.author.id).first()
+    self_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
     tipees = ctx.message.mentions
+
     num_users = len(tipees)
 
     if not self_exists:
@@ -437,21 +442,21 @@ async def _tip(ctx, amount, user: discord.User=None):
     pid = gen_paymentid(self_exists.address)
     balance = session.query(TipJar).filter(TipJar.paymentid == pid).first()
     if not balance:
-        t = TipJar(pid, ctx.message.author.id, 0)
+        t = TipJar(pid, user.id, 0)
         session.add(t)
         session.commit()
         err_embed.description = "You are now registered, please `{}deposit` to tip".format(config['prefix'])
-        await client.send_message(ctx.message.author, embed=err_embed)
+        await client.send_message(user, embed=err_embed)
         return False
 
     if balance.amount < 0:
         balance.amount = 0
         session.commit()
         err_embed.description = "Your balance was negative!"
-        await client.send_message(ctx.message.author, embed=err_embed)
+        await client.send_message(user, embed=err_embed)
 
         madk = discord.utils.get(client.get_all_members(), id='200823661928644617')
-        err_embed.title = "{} had a negative balance!!".format(ctx.message.author.name)
+        err_embed.title = "{} had a negative balance!!".format(user.name)
         err_embed.description = "PID: {}".format(pid)
 
         await client.send_message(madk, embed=err_embed)
@@ -460,7 +465,7 @@ async def _tip(ctx, amount, user: discord.User=None):
     if (num_users*(amount)+fee) > balance.amount:
         err_embed.description = "Your balance is too low! Amount + Fee = `{}` {}".format((num_users*(amount)+fee) / config['units'], config['symbol'])
         await client.add_reaction(ctx.message, EMOJI_ERROR)
-        await client.send_message(ctx.message.author, embed=err_embed)
+        await client.send_message(user, embed=err_embed)
         return False
 
     destinations = []
@@ -487,16 +492,18 @@ async def _tip(ctx, amount, user: discord.User=None):
     tx = Transaction(result['transactionHash'], num_users*amount, balance.paymentid)
     session.add(tx)
     session.commit()
+
     good_embed.title = "Tip Sent!"
     good_embed.description = "Sent `{0:,.2f}` {1} to {2} users! With Transaction Hash ```{3}```" \
-           .format(amount / config['units'], config['symbol'], num_users-failed, result['transactionHash'])
+            .format(amount / config['units'], config['symbol'], num_users-failed, result['transactionHash'])
     good_embed.add_field(name="New Balance", value="`{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol']))
     good_embed.add_field(name="Transfer Info", value="Successfully sent to {0} users. {1} failed.".format(num_users-failed, failed))
-    await client.send_message(ctx.message.author, embed=good_embed)
+
+    await client.send_message(user, embed=good_embed)
 
     for user in tipees:
         good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
-        good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(ctx.message.author.mention, amount / config['units'], config['symbol'], result['transactionHash'])
+        good_embed.description = "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```".format(user.mention, amount / config['units'], config['symbol'], result['transactionHash'])
         good_embed.url = "https://blocks.turtle.link/?hash={}#blockchain_transaction".format(result['transactionHash'])
         await client.send_message(user, embed=good_embed)
 
