@@ -425,11 +425,20 @@ async def _tip(ctx, amount,
 
     if not receiver:
         tipees = ctx.message.mentions
+        if not tipees:
+            # user might be trying to tip directly to an address.
+            # .tip {amount} {trtl_addr} {rest}
+            wallet_address = ctx.message.content.split(' ')[2]
+            if not len(wallet_address) == 99:
+                await client.add_reaction(ctx.message, EMOJI_SOS)
+                return False
+
+            tipees = [wallet_address, ]
     else:
         tipees = [receiver, ]
 
     try:
-        amount = int(round(float(amount)*config['units']))
+        amount = int(round(float(amount) * config['units']))
     except:
         await client.say("Amount must be a number > {}".format(10 / config['units']))
         return False
@@ -481,13 +490,18 @@ async def _tip(ctx, amount,
     actual_users = []
     failed = 0
     for user in tipees:
-        user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
-        if user_exists:
-            destinations.append({'amount': amount, 'address': user_exists.address})
-            if user_exists.userid != sender.id:  # multitip shouldn't tip self.
-                actual_users.append(user)
+        if type(user) is str:
+            # is a direct wallet tip, set at the top.
+            destinations.append({'amount': amount, 'address': user})
+            actual_users.append(user)
         else:
-            print("user {} does not exist!!".format(user))
+            user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
+            if user_exists:
+                destinations.append({'amount': amount, 'address': user_exists.address})
+                if user_exists.userid != sender.id:  # multitip shouldn't tip self.
+                    actual_users.append(user)
+            else:
+                print("user {} does not exist!!".format(user))
 
     if len(destinations) == 0:
         await client.add_reaction(ctx.message, EMOJI_SOS)
@@ -501,7 +515,7 @@ async def _tip(ctx, amount,
     await client.add_reaction(ctx.message, EMOJI_MONEYBAGS)
 
     balance.amount -= ((len(actual_users)*amount)+fee)
-    tx = Transaction(result['transactionHash'], (len(actual_users)*amount)+fee, balance.paymentid)
+    tx = Transaction(result['transactionHash'], (len(actual_users) * amount) + fee, balance.paymentid)
     session.add(tx)
     session.commit()
     good_embed.title = "Tip Sent!"
@@ -520,6 +534,9 @@ async def _tip(ctx, amount,
     await client.send_message(sender, embed=good_embed)
 
     for user in actual_users:
+        if type(user) is str:
+            continue
+
         good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
         good_embed.description = (
             "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```"
