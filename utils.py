@@ -129,6 +129,13 @@ def build_transfer(amount, transfers, balance):
     return params
 
 
+def is_address(addr):
+    """
+    Does some basic validation on an object to check if it could be an address.
+    """
+    return type(addr) is str and addr.startswith('TRTL') and len(addr) == 99
+
+
 REACTION_AMP_CACHE = deque([], 500)
 
 

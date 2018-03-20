@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from models import Wallet, TipJar, Base, Transaction
 from utils import config, format_hash, gen_paymentid, rpc, daemon, \
         get_deposits, get_fee, build_transfer, get_supply, \
-        reaction_tip_register, reaction_tipped_already
+        reaction_tip_register, reaction_tipped_already, is_address
 
 HEADERS = {'Content-Type': 'application/json'}
 
@@ -186,7 +186,7 @@ async def registerwallet(ctx, address):
         await client.send_message(ctx.message.author, embed = err_embed)
         return
 
-    elif not exists and len(address) == 99:
+    elif not exists and is_address(address):
         w = Wallet(address, ctx.message.author.id,ctx.message.id)
         session.add(w)
         session.commit()
@@ -212,7 +212,7 @@ async def registerwallet(ctx, address):
         err_embed.description = "Your wallet must be 99 characeters long, your entry was too long"
     elif len(address) < 99:
         err_embed.description = "Your wallet must be 99 characeters long, your entry was too short"
-    await client.say(embed = err_embed)
+    await client.say(embed=err_embed)
 
 
 @client.command(pass_context=True)
@@ -224,7 +224,7 @@ async def updatewallet(ctx, address):
 
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
 
-    if address == None:
+    if address is None:
         err_embed.description = "Please provide an address!"
         await client.send_message(ctx.message.author, embed=err_embed)
         return
@@ -238,9 +238,9 @@ async def updatewallet(ctx, address):
     addr_exists = session.query(Wallet).filter(Wallet.address == address).first()
     if addr_exists:
         err_embed.description = "Address already registered by another user!"
-        await client.send_message(ctx.message.author, embed = err_embed)
+        await client.send_message(ctx.message.author, embed=err_embed)
         return
-    elif exists and len(address) == 99:
+    elif exists and is_address(address):
         old_pid = gen_paymentid(exists.address)
         old_balance = session.query(TipJar).filter(TipJar.paymentid == old_pid).first()
         exists.address = address
@@ -425,11 +425,20 @@ async def _tip(ctx, amount,
 
     if not receiver:
         tipees = ctx.message.mentions
+        if not tipees:
+            # user might be trying to tip directly to an address.
+            # .tip {amount} {trtl_addr} {rest}
+            wallet_address = ctx.message.content.split(' ')[2]
+            if not is_address(wallet_address):
+                await client.add_reaction(ctx.message, EMOJI_SOS)
+                return False
+
+            tipees = [wallet_address, ]
     else:
         tipees = [receiver, ]
 
     try:
-        amount = int(round(float(amount)*config['units']))
+        amount = int(round(float(amount) * config['units']))
     except:
         await client.say("Amount must be a number > {}".format(10 / config['units']))
         return False
@@ -481,13 +490,18 @@ async def _tip(ctx, amount,
     actual_users = []
     failed = 0
     for user in tipees:
-        user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
-        if user_exists:
-            destinations.append({'amount': amount, 'address': user_exists.address})
-            if user_exists.userid != sender.id:  # multitip shouldn't tip self.
-                actual_users.append(user)
+        if is_address(user):
+            # is a direct wallet tip, set at the top.
+            destinations.append({'amount': amount, 'address': user})
+            actual_users.append(user)
         else:
-            print("user {} does not exist!!".format(user))
+            user_exists = session.query(Wallet).filter(Wallet.userid == user.id).first()
+            if user_exists:
+                destinations.append({'amount': amount, 'address': user_exists.address})
+                if user_exists.userid != sender.id:  # multitip shouldn't tip self.
+                    actual_users.append(user)
+            else:
+                print("user {} does not exist!!".format(user))
 
     if len(destinations) == 0:
         await client.add_reaction(ctx.message, EMOJI_SOS)
@@ -501,7 +515,7 @@ async def _tip(ctx, amount,
     await client.add_reaction(ctx.message, EMOJI_MONEYBAGS)
 
     balance.amount -= ((len(actual_users)*amount)+fee)
-    tx = Transaction(result['transactionHash'], (len(actual_users)*amount)+fee, balance.paymentid)
+    tx = Transaction(result['transactionHash'], (len(actual_users) * amount) + fee, balance.paymentid)
     session.add(tx)
     session.commit()
     good_embed.title = "Tip Sent!"
@@ -520,6 +534,9 @@ async def _tip(ctx, amount,
     await client.send_message(sender, embed=good_embed)
 
     for user in actual_users:
+        if is_address(user):
+            continue
+
         good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
         good_embed.description = (
             "{0} sent you `{1:,.2f}` {2} with Transaction Hash ```{3}```"
