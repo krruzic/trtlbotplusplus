@@ -29,7 +29,7 @@ client = Bot(
 
 async def wallet_watcher():
     await client.wait_until_ready()
-    start = int(rpc.getStatus()['blockCount'])-10000
+    start = int(rpc.getStatus()['blockCount'])-100000
     while not client.is_closed:
         height = int(rpc.getStatus()['blockCount'])
         print("HEIGHT IS: " + str(height))
@@ -162,9 +162,6 @@ async def supply():
 @client.command(pass_context=True)
 async def registerwallet(ctx, address):
     """ Register your wallet in the DB """
-    wallet_channel = discord.utils.get(ctx.message.server.channels, name='wallets')
-    if wallet_channel is None:
-        wallet_channel = ctx.message.channel
 
     address = address.strip()
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
@@ -218,9 +215,6 @@ async def registerwallet(ctx, address):
 @client.command(pass_context=True)
 async def updatewallet(ctx, address):
     """ Updates your wallet address """
-    wallet_channel = discord.utils.get(ctx.message.server.channels, name='wallets')
-    if wallet_channel is None:
-        wallet_channel = ctx.message.channel
 
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
 
@@ -258,7 +252,7 @@ async def updatewallet(ctx, address):
 
         good_embed.title = "Balance Update"
         good_embed.url = ""
-        good_embed.description = "New Balance: `{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol'])
+        good_embed.description = "New Balance: `{:0,.2f}` {1}".format(old_balance.amount / config['units'], config['symbol'])
         await client.send_message(ctx.message.author, embed = good_embed)
         return
     elif len(address) > 99:
@@ -271,9 +265,6 @@ async def updatewallet(ctx, address):
 @client.command(pass_context=True)
 async def wallet(ctx, user: discord.User=None):
     """ Returns specified user's wallet address or your own if None """
-    wallet_channel = discord.utils.get(ctx.message.server.channels, name='wallets')
-    if wallet_channel is None:
-        wallet_channel = ctx.message.channel
 
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     good_embed = discord.Embed(colour=discord.Colour(0xD4AF37))
@@ -419,6 +410,8 @@ async def _tip(ctx, amount,
 
     err_embed = discord.Embed(title=":x:Error:x:", colour=discord.Colour(0xf44242))
     good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
+    request_desc = "Register with `{}registerwallet <youraddress>` to get started! To create a wallet head to https://turtlecoin.lol/wallet/".format(config['prefix'])
+    request_embed = discord.Embed(title="{} wants to tip you".format(ctx.message.author.name), description=request_desc)
 
     if not sender:  # regular tip
         sender = ctx.message.author
@@ -445,7 +438,7 @@ async def _tip(ctx, amount,
     if not self_exists:
         err_embed.description = "You haven't registered a wallet!"
         err_embed.add_field(name="Help", value="Use `{}registerwallet <addr>` before trying to tip!".format(config['prefix']))
-        await client.say(embed=err_embed)
+        await client.send_message(sender, embed=err_embed)
         return False
 
     pid = gen_paymentid(self_exists.address)
@@ -487,7 +480,13 @@ async def _tip(ctx, amount,
             if user_exists.userid != sender.id:  # multitip shouldn't tip self.
                 actual_users.append(user)
         else:
-            print("user {} does not exist!!".format(user))
+            failed = failed+1
+            await client.add_reaction(ctx.message, EMOJI_SOS)
+            try:
+                await client.send_message(user, embed = request_embed)
+            except:
+                continue
+
 
     if len(destinations) == 0:
         await client.add_reaction(ctx.message, EMOJI_SOS)
@@ -517,7 +516,10 @@ async def _tip(ctx, amount,
 
     good_embed.add_field(name="New Balance", value="`{:0,.2f}` {}".format(balance.amount / config['units'], config['symbol']))
     good_embed.add_field(name="Transfer Info", value="Successfully sent to {0} users. {1} failed.".format(len(actual_users), failed))
-    await client.send_message(sender, embed=good_embed)
+    try:
+        await client.send_message(sender, embed=good_embed)
+    except:
+        pass
 
     for user in actual_users:
         good_embed = discord.Embed(title="You were tipped!", colour=discord.Colour(0xD4AF37))
@@ -530,9 +532,10 @@ async def _tip(ctx, amount,
         good_embed.url = (
             "https://blocks.turtle.link/?hash={}#blockchain_transaction"
             .format(result['transactionHash']))
-
-        await client.send_message(user, embed=good_embed)
-
+        try:
+            await client.send_message(user, embed=good_embed)
+        except:
+            continue
     return True
 
 client.run(config['token'])
