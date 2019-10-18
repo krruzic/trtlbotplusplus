@@ -9,7 +9,7 @@ discord.py==0.16.12
 idna==2.6
 jsonrpc-requests==0.4.0
 multidict==4.1.0
-requests==2.18.4
+requests==2.20.0
 six==1.11.0
 SQLAlchemy==1.2.2
 systemd==0.14.0
