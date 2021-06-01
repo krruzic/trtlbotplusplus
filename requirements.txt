@@ -13,5 +13,5 @@ requests==2.18.4
 six==1.11.0
 SQLAlchemy==1.2.2
 systemd==0.14.0
-urllib3==1.22
+urllib3==1.26.5
 websockets==3.4
